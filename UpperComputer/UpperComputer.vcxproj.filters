@@ -48,6 +48,12 @@
     <ClInclude Include="PubSub.h">
       <Filter>头文件</Filter>
     </ClInclude>
+    <ClInclude Include="WebsocketEndpoint.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="ConnectMetadata.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="UpperComputer.cpp">
@@ -63,6 +69,12 @@
       <Filter>源文件</Filter>
     </ClCompile>
     <ClCompile Include="PubSub.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="WebsocketEndpoint.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="ConnectMetadata.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
   </ItemGroup>
