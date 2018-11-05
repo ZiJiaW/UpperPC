@@ -1,6 +1,9 @@
 #include "stdafx.h"
 #include "WebsocketEndpoint.h"
-
+#include "UpperComputer.h"
+#include "UpperComputerDlg.h"
+#include "resource.h"
+#include "define.h"
 
 WebsocketEndpoint::WebsocketEndpoint()
 {
@@ -53,4 +56,20 @@ void WebsocketEndpoint::send(std::string message)
     std::error_code ec;
     m_endpoint.send(m_conptr->getHdl(), message, websocketpp::frame::opcode::text, ec);
     // TODO: do some record
+    auto pDlg = (CUpperComputerDlg*)(AfxGetApp()->m_pMainWnd);// 对话框指针
+    if (ec)
+    {
+        pDlg->WriteLogFile(1, _T("发送消息失败，错误信息："));
+        pDlg->WriteLogFile(0, CSTR(ec.message()));
+    }
+    else
+    {
+        pDlg->WriteLogFile(1, _T("发送："));
+        pDlg->WriteLogFile(0, CSTR(message));
+    }
+}
+
+std::string WebsocketEndpoint::getConStatus() const
+{
+    return  m_conptr->getStatus();
 }

@@ -206,7 +206,6 @@ BOOL CUpperComputerDlg::OnInitDialog()
     }
 	// 服务器断开按钮不可用
 	Idc_Button_ServerDisconnect.EnableWindow(FALSE);
-
     
 
 	// 串口号
@@ -250,23 +249,37 @@ BOOL CUpperComputerDlg::OnInitDialog()
 	    f_LogFile.Open(_T("uppercomputer.log"),CFile::modeCreate|CFile::modeNoTruncate|CFile::modeWrite);
     }
 
-    
     AutoOpenMasterCom();
 
 	//// 启动VGA图像推送，推送给服务器
 	//AfxBeginThread(_VgaSendThread,this);
 
+    Idc_Check_LogDisplay.SetCheck(1);// 默认开启log打印
+
     // 向服务器发送连接请求
 	m_ServerConnectStatus = 0;
 	m_ServerRegisterStatus = 0;
-	OnBnClickedButtonConnect();
-
+	//OnBnClickedButtonConnect();
 
 	// 启动注册定时器
 	SetTimer( TIMERID_REGISTER, TIMERID_REGISTER_TIME, NULL );
 
 	//// 打开ft232h
 	//OnBnClickedButtonComopen();
+
+    //++++++++++++++++++++++++++++++++++++++++++++++++++++++++just for debug
+
+    wsEndpoint = new WebsocketEndpoint();
+    WriteLogFile(1, _T("Open endpoint"));
+    /*if (wsEndpoint->connect("ws://127.0.0.1:9002") != -1)
+    {
+        WriteLogFile(0, _T("connect with localhost 9002 port!"));
+    }
+    else {
+        WriteLogFile(0, _T("connect failed!"));
+    }*/
+    //++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    //OnBnClickedButtonConnect();
 
 	return TRUE;  // 除非将焦点设置到控件，否则返回 TRUE
 }
@@ -331,6 +344,7 @@ void CUpperComputerDlg::OnBnClickedOk()
 
 void CUpperComputerDlg::OnClose() 
 {
+    delete wsEndpoint;// 销毁终端，关闭连接
     CDialog::OnClose();
 }
 
@@ -1757,6 +1771,7 @@ void CUpperComputerDlg::SpiFlashPageProgram(unsigned __int64 uint64_StartAddr, B
 
 
 // 响应函数
+/*
 void CUpperComputerDlg::OnBnClickedButtonConnect()
 {
 	BYTE byte_IPAddr[4];
@@ -1825,8 +1840,55 @@ void CUpperComputerDlg::OnBnClickedButtonConnect()
 	}
 
 }
+*/
+void CUpperComputerDlg::OnBnClickedButtonConnect()// 为WebSocket重写之
+{
+    WriteLogFile(1, _T("正在连接......"));
+    BYTE byte_IPAddr[4];
+    // 获得输入的服务器IP地址
+    Idc_IPaddress_ServerIPAddr.GetAddress(byte_IPAddr[0], byte_IPAddr[1], byte_IPAddr[2], byte_IPAddr[3]);
+    str_ServerIPAddress.Format(_T("%d.%d.%d.%d"), byte_IPAddr[0], byte_IPAddr[1], byte_IPAddr[2], byte_IPAddr[3]);
+    // 获得端口号
+    Idc_Edit_ServerStatusPort.GetWindowText(str_ServerStatusPort);
+    uint_ServerStatusPort = (unsigned int)_ttoi(str_ServerStatusPort);
+    // say: ws://127.0.0.1:9002
+    CString uri = "ws://" + str_ServerIPAddress + ":" + str_ServerStatusPort;
+    bool success = wsEndpoint->connect(LPCSTR(uri)) == 1;
+    while(wsEndpoint->getConStatus() == "Connecting"){}// wait for connecting
+    success &= wsEndpoint->getConStatus() == "Open";// successfully open
+    if (success)
+    {
+        // 已连接,连接按钮设为不可用
+        Idc_Button_ServerConnect.SetWindowText(_T("已连接"));
+        Idc_Button_ServerConnect.EnableWindow(FALSE);
+        // 断开连接可用
+        Idc_Button_ServerDisconnect.SetWindowText(_T("断开"));
+        Idc_Button_ServerDisconnect.EnableWindow(TRUE);
 
-
+        m_ServerConnectStatus = 1;
+        // 日志：“服务器连接成功：”
+        // “IP地址：xxx”
+        // “端口号：TCP-xxxx”
+        WriteLogFile(1, _T("服务器连接成功："));
+        WriteLogFile(0, _T("IP地址：") + str_ServerIPAddress);
+        WriteLogFile(0, _T("端口号：") + str_ServerStatusPort);
+        // 连接成功后发送注册请求
+        wsEndpoint->send(std::string("<Register><Id>") + LPCSTR(str_UpperComputerID) + "</Id></Register>");
+    }
+    else// fail to connect
+    {
+        // 状态不变
+        m_ServerConnectStatus = 0;
+        m_ServerRegisterStatus = 0;
+        // 日志：“服务器连接失败：”
+        // “IP地址：xxx”
+        // “端口号：TCP-xxxx”
+        WriteLogFile(1, _T("服务器连接失败："));
+        WriteLogFile(0, _T("IP地址：") + str_ServerIPAddress);
+        WriteLogFile(0, _T("端口号：") + str_ServerStatusPort);
+    }
+}
+/*
 void CUpperComputerDlg::OnBnClickedButtonDisconnect()
 {
 
@@ -1865,9 +1927,25 @@ void CUpperComputerDlg::OnBnClickedButtonDisconnect()
     WriteLogFile(0,_T("IP地址：")+str_ServerIPAddress);
     WriteLogFile(0,_T("端口号：")+str_ServerStatusPort);
 
+}*/
+
+void CUpperComputerDlg::OnBnClickedButtonDisconnect()// 重写
+{
+    wsEndpoint->close(1000, "User clicked to close.");
+    // 更新工作模式为实验模式
+    str_WorkMode = _T("ExperimentMode");
+    // 更新上位机状态
+    str_WorkStatus = _T("Ready");
+    // 初始化数据写入主控fpga
+    FpgaWrite(0, 0x10, 0xffffffffffffffff);
+
+    //已断开,连接按钮设为可用
+    Idc_Button_ServerConnect.SetWindowText(_T("连接"));
+    Idc_Button_ServerConnect.EnableWindow(TRUE);
+    //断开连接不可用
+    Idc_Button_ServerDisconnect.SetWindowText(_T("已断开"));
+    Idc_Button_ServerDisconnect.EnableWindow(FALSE);
 }
-
-
 
 
 

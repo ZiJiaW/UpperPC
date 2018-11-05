@@ -41,7 +41,7 @@
 #include <afxsock.h>            // MFC 套接字扩展
 #include <afx.h>
 
-// 支持WebSocket
+// Websocket支持
 #include <websocketpp/config/asio_no_tls_client.hpp>
 #include <websocketpp/client.hpp>
 #include <websocketpp/common/thread.hpp>
@@ -52,11 +52,6 @@
 #include <sstream>
 #include <map>
 #include <vector>
-
-
-
-
-
 
 #ifdef _UNICODE
 #if defined _M_IX86

@@ -13,6 +13,7 @@
 
 #include "ftd2xx.h"
 #include "types.h"
+#include "WebsocketEndpoint.h"
 
 #pragma comment(lib, "ftd2xx.lib")
 
@@ -44,7 +45,6 @@ protected:
 	DECLARE_MESSAGE_MAP()
 public:
 
-
     // 服务器信息
 	afx_msg void OnBnClickedOk();
 	afx_msg void OnBnClickedButtonConnect();
@@ -61,6 +61,9 @@ public:
 
     // 状态端口CSocket
 	StatusSocket* m_StatusSocket;
+
+    // websocket控制终端
+    WebsocketEndpoint* wsEndpoint;
 
 	bool m_ServerConnectStatus;
 	bool m_ServerRegisterStatus;
