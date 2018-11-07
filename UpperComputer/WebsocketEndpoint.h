@@ -12,6 +12,8 @@ public:
     void send(std::string message);
 
     std::string getConStatus() const;
+    void setFileRcvEnable(bool flag);
+    void closeFile();
 private:
     client m_endpoint;
     std::shared_ptr<std::thread> m_thread;

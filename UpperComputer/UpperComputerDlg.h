@@ -201,4 +201,5 @@ public:
 	afx_msg void OnBnClickedButtonHardwareteststart();
 	afx_msg void OnBnClickedButtonHardwareteststop();
 	afx_msg void OnBnClickedButtonFpgaupdatestop();
+    afx_msg void OnEnChangeEditLogdisplay();
 };

@@ -19,7 +19,7 @@ void ConnectMetadata::onOpen(client* c, websocketpp::connection_hdl hdl)
     m_status = "Open";
     client::connection_ptr con = c->get_con_from_hdl(hdl);
     m_server = con->get_response_header("Server");
-    pDlg->WriteLogFile(1, _T("连接建立成功！"));
+    pDlg->WriteLogFile(1, CString(_T("连接建立成功：")) + CSTR(m_uri));
     //pDlg->wsEndpoint->send(LPCSTR(CString("hello")));
 }
 
@@ -30,7 +30,7 @@ void ConnectMetadata::onFail(client* c, websocketpp::connection_hdl hdl)
     client::connection_ptr con = c->get_con_from_hdl(hdl);
     m_server = con->get_response_header("Server");
     m_errorReason = con->get_ec().message();
-    pDlg->WriteLogFile(1, _T("连接失败！"));
+    pDlg->WriteLogFile(1, CString(_T("连接建立失败：")) + CSTR(m_uri));
 }
 void ConnectMetadata::onClose(client* c, websocketpp::connection_hdl hdl)
 {
@@ -67,20 +67,18 @@ void ConnectMetadata::onClose(client* c, websocketpp::connection_hdl hdl)
     pDlg->Idc_Button_ServerDisconnect.SetWindowText(_T("已断开"));
     pDlg->Idc_Button_ServerDisconnect.EnableWindow(FALSE);
     // 日志：“服务器连接断开：”
-    pDlg->WriteLogFile(1, _T("连接关闭，关闭原因："));
-    pDlg->WriteLogFile(0, CSTR(m_errorReason));
+    pDlg->WriteLogFile(1, CString(_T("连接关闭，关闭原因：")) + CSTR(m_errorReason));
 }
 
 void ConnectMetadata::onMessage(websocketpp::connection_hdl hdl, client::message_ptr msg)
 {
     auto pDlg = (CUpperComputerDlg*)(AfxGetApp()->m_pMainWnd);
-    // TODO
     auto serverMessage = msg->get_payload();
     if (msg->get_opcode() == websocketpp::frame::opcode::text) {
-        pDlg->WriteLogFile(0, _T("收到text消息。"));
+        pDlg->WriteLogFile(1, CString(_T("收到text消息：")) + CSTR(serverMessage));
     }
     else {
-        pDlg->WriteLogFile(0, _T("收到二进制消息。"));
+        pDlg->WriteLogFile(1, CString(_T("收到binary消息：")) + CSTR(websocketpp::utility::to_hex(serverMessage)));
     }
     if (!m_fileRcvEnable)// 不在传输文件
     {
@@ -360,8 +358,7 @@ void ConnectMetadata::onMessage(websocketpp::connection_hdl hdl, client::message
         }
         else
         {
-            pDlg->WriteLogFile(1, _T("接收到无法解析的内容："));
-            pDlg->WriteLogFile(0, CSTR(serverMessage));
+            pDlg->WriteLogFile(1, CString(_T("接收到无法解析的内容：")) + CSTR(serverMessage));
         }
     }
     else// 接收文件
@@ -548,4 +545,9 @@ bool ConnectMetadata::parseCmd(string cmd)
         return true;
     }
     return false;
+}
+
+void ConnectMetadata::closeFile()
+{
+    m_loadFile.Abort();
 }

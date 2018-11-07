@@ -17,6 +17,7 @@ public:
     websocketpp::connection_hdl getHdl() const;
     std::string getStatus() const;
     void setFileRcvEnable(bool flag);
+    void closeFile();
 private:
     websocketpp::connection_hdl m_hdl;
     std::string m_status;

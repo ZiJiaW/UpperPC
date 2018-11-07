@@ -109,7 +109,7 @@ BEGIN_MESSAGE_MAP(CUpperComputerDlg, CDialogEx)
 	ON_BN_CLICKED(IDC_BUTTON_Disconnect, &CUpperComputerDlg::OnBnClickedButtonDisconnect)
 
 	ON_WM_TIMER()
-
+    ON_WM_CLOSE()
 
     ON_BN_CLICKED(IDC_BUTTON_ComOpen, &CUpperComputerDlg::OnBnClickedButtonComopen)
     ON_BN_CLICKED(IDC_BUTTON_ComClose, &CUpperComputerDlg::OnBnClickedButtonComclose)
@@ -120,6 +120,7 @@ BEGIN_MESSAGE_MAP(CUpperComputerDlg, CDialogEx)
 	ON_BN_CLICKED(IDC_BUTTON_HardwareTestStart, &CUpperComputerDlg::OnBnClickedButtonHardwareteststart)
 	ON_BN_CLICKED(IDC_BUTTON_HardwareTestStop, &CUpperComputerDlg::OnBnClickedButtonHardwareteststop)
 	ON_BN_CLICKED(IDC_BUTTON_FpgaUpdateStop, &CUpperComputerDlg::OnBnClickedButtonFpgaupdatestop)
+    ON_EN_CHANGE(IDC_EDIT_LogDisplay, &CUpperComputerDlg::OnEnChangeEditLogdisplay)
 END_MESSAGE_MAP()
 
 
@@ -270,7 +271,7 @@ BOOL CUpperComputerDlg::OnInitDialog()
     //++++++++++++++++++++++++++++++++++++++++++++++++++++++++just for debug
 
     wsEndpoint = new WebsocketEndpoint();
-    WriteLogFile(1, _T("Open endpoint"));
+    WriteLogFile(1, _T("开启WS终端......"));
     /*if (wsEndpoint->connect("ws://127.0.0.1:9002") != -1)
     {
         WriteLogFile(0, _T("connect with localhost 9002 port!"));
@@ -338,13 +339,13 @@ HCURSOR CUpperComputerDlg::OnQueryDragIcon()
 void CUpperComputerDlg::OnBnClickedOk()
 {
     f_LogFile.Close();
-
+    //delete wsEndpoint;
 	CDialogEx::OnOK();
 }
 
 void CUpperComputerDlg::OnClose() 
 {
-    delete wsEndpoint;// 销毁终端，关闭连接
+    //delete wsEndpoint;// 销毁终端
     CDialog::OnClose();
 }
 
@@ -492,17 +493,12 @@ UINT _FpgaUpdateThread(LPVOID lparam)
 				{
 					break;
 				}
-			
-
 				//烧写文件内容
 				pDlg->SpiFlashPageProgram(uint64_SpiFlashPageAddr, byte_FpgaUpdateFileReadBuf, uint_FpgaUpdateFileReadLen);
-
 				// 更新烧写进度条
 				uint64_SpiFlashPageAddr += uint_FpgaUpdateFileReadLen;
 				pDlg->Idc_Progress_FpgaUpdateProgress.SetPos(uint64_SpiFlashPageAddr - FPGA_UPDATE_START_ADDR); 
-
 			}
-
 			// 等待页面烧写完成
 			for (i = 0; i < 3; i++)
 			{
@@ -604,205 +600,196 @@ UINT _FpgaUpdateThread(LPVOID lparam)
 
 	// jtag加载模式
     else if (pDlg->Idc_Radio_FPGAUpdateJtagSelect.GetCheck())
-	{
+    {
 
 
-		f_FpgaUpdateFile.GetFileTitle();
+        f_FpgaUpdateFile.GetFileTitle();
 
-		for (;;)
-		{
-			// 启动jtag加载超时定时器
-			pDlg->SetTimer( TIMERID_JTAG_TIMEOUT, TIMERID_JTAG_TIMEOUT_TIME, NULL );
+        for (;;)
+        {
+            // 启动jtag加载超时定时器
+            pDlg->SetTimer(TIMERID_JTAG_TIMEOUT, TIMERID_JTAG_TIMEOUT_TIME, NULL);
 
-			pDlg->WriteLogFile(1,_T("FPGA 升级："));
-			pDlg->WriteLogFile(0,_T("开始JTAG加载。。。"));
+            pDlg->WriteLogFile(1, _T("FPGA 升级："));
+            pDlg->WriteLogFile(0, _T("开始JTAG加载。。。"));
 
-			// 烧写进度归零
-			pDlg->Idc_Progress_FpgaUpdateProgress.SetPos(0); 
-			// 指向文件开头
-			f_FpgaUpdateFile.Seek(BIT_START_ADDR_XC6SLX100, CFile::begin);  
+            // 烧写进度归零
+            pDlg->Idc_Progress_FpgaUpdateProgress.SetPos(0);
+            // 指向文件开头
+            f_FpgaUpdateFile.Seek(BIT_START_ADDR_XC6SLX100, CFile::begin);
 
-			// 开始烧写文件
-			uint64_SpiFlashPageAddr = FPGA_UPDATE_START_ADDR;
-			int_SpiFlashStatusData = 0;
-
-
-			// jtag 初始化
-			pDlg->JtagStateReset();
-			pDlg->JtagStateIdle();
-		
-			//Loading device with 'bypass' instruction.
-			pDlg->JtagSIR(6,0x3f);
-			// Loading device with a `jprogram` instruction. 
-			pDlg->JtagSIR(6,0xb);
-			// Loading device with a `cfg_in` instruction. 
-			pDlg->JtagSIR(6,0x5);
-			Sleep(10);
-			pDlg->JtagStateReset();
-			// Loading device with a `cfg_in` instruction. 
-			pDlg->JtagSIR(6,0x5);
-			pDlg->JtagSDR(32,0x0);
-			pDlg->JtagSIR(6,0x5);
+            // 开始烧写文件
+            uint64_SpiFlashPageAddr = FPGA_UPDATE_START_ADDR;
+            int_SpiFlashStatusData = 0;
 
 
-			// tap状态机从“RUN-TEST/IDLE” 状态进入“SHIFT-DR”状态，TMS输出“001”
-			pDlg->FpgaWrite(0, 0x50, 0x3);
-			pDlg->FpgaWrite(0, 0x51, 0x0000000100000000);
+            // jtag 初始化
+            pDlg->JtagStateReset();
+            pDlg->JtagStateIdle();
+
+            //Loading device with 'bypass' instruction.
+            pDlg->JtagSIR(6, 0x3f);
+            // Loading device with a `jprogram` instruction. 
+            pDlg->JtagSIR(6, 0xb);
+            // Loading device with a `cfg_in` instruction. 
+            pDlg->JtagSIR(6, 0x5);
+            Sleep(10);
+            pDlg->JtagStateReset();
+            // Loading device with a `cfg_in` instruction. 
+            pDlg->JtagSIR(6, 0x5);
+            pDlg->JtagSDR(32, 0x0);
+            pDlg->JtagSIR(6, 0x5);
 
 
-			// 写入前导数据, msb first
-			pDlg->FpgaWrite(0, 0x50, 0x100000020);
-			pDlg->FpgaWrite(0, 0x51, 0x30a10008);
-			pDlg->FpgaWrite(0, 0x51, 0x0);
+            // tap状态机从“RUN-TEST/IDLE” 状态进入“SHIFT-DR”状态，TMS输出“001”
+            pDlg->FpgaWrite(0, 0x50, 0x3);
+            pDlg->FpgaWrite(0, 0x51, 0x0000000100000000);
 
 
-			pDlg->FpgaWrite(0, 0x700, 0x1);
-			pDlg->FpgaWrite(0, 0x700, 0x2);
+            // 写入前导数据, msb first
+            pDlg->FpgaWrite(0, 0x50, 0x100000020);
+            pDlg->FpgaWrite(0, 0x51, 0x30a10008);
+            pDlg->FpgaWrite(0, 0x51, 0x0);
 
 
-			// 写入文件数据
-			for(;;)
-			{    
-
-				//读取文件内容
-				uint_FpgaUpdateFileReadLen = f_FpgaUpdateFile.Read(byte_FpgaUpdateFileReadBuf, JTAG_BLOCK_WRITE_LENGTH);
-
-				if(f_FpgaUpdateFile.GetPosition() == uint_FpgaUpdateFileLength)
-				{
-					//烧写文件内容
-					pDlg->FpgaBlockWrite(0x51, byte_FpgaUpdateFileReadBuf, 4, uint_FpgaUpdateFileReadLen - 4);
-					// 最后4-byte中的最后1-bit，tms要输出1
-					pDlg->FpgaWrite(0, 0x51, 0x8000000000000000 | ((byte_FpgaUpdateFileReadBuf[uint_FpgaUpdateFileReadLen - 4]) << 24) | ((byte_FpgaUpdateFileReadBuf[uint_FpgaUpdateFileReadLen - 3]) << 16) | ((byte_FpgaUpdateFileReadBuf[uint_FpgaUpdateFileReadLen - 2]) << 8) | (byte_FpgaUpdateFileReadBuf[uint_FpgaUpdateFileReadLen - 1]));
-
-					break;
-				}
-				else
-				{
-					//烧写文件内容
-					pDlg->FpgaBlockWrite(0x51, byte_FpgaUpdateFileReadBuf, 4, uint_FpgaUpdateFileReadLen);
-				
-				}
+            pDlg->FpgaWrite(0, 0x700, 0x1);
+            pDlg->FpgaWrite(0, 0x700, 0x2);
 
 
-				// 更新烧写进度条
-				uint64_SpiFlashPageAddr += uint_FpgaUpdateFileReadLen;
-				pDlg->Idc_Progress_FpgaUpdateProgress.SetPos(uint64_SpiFlashPageAddr); 
+            // 写入文件数据
+            for (;;)
+            {
+
+                //读取文件内容
+                uint_FpgaUpdateFileReadLen = f_FpgaUpdateFile.Read(byte_FpgaUpdateFileReadBuf, JTAG_BLOCK_WRITE_LENGTH);
+
+                if (f_FpgaUpdateFile.GetPosition() == uint_FpgaUpdateFileLength)
+                {
+                    //烧写文件内容
+                    pDlg->FpgaBlockWrite(0x51, byte_FpgaUpdateFileReadBuf, 4, uint_FpgaUpdateFileReadLen - 4);
+                    // 最后4-byte中的最后1-bit，tms要输出1
+                    pDlg->FpgaWrite(0, 0x51, 0x8000000000000000 | ((byte_FpgaUpdateFileReadBuf[uint_FpgaUpdateFileReadLen - 4]) << 24) | ((byte_FpgaUpdateFileReadBuf[uint_FpgaUpdateFileReadLen - 3]) << 16) | ((byte_FpgaUpdateFileReadBuf[uint_FpgaUpdateFileReadLen - 2]) << 8) | (byte_FpgaUpdateFileReadBuf[uint_FpgaUpdateFileReadLen - 1]));
+
+                    break;
+                }
+                else
+                {
+                    //烧写文件内容
+                    pDlg->FpgaBlockWrite(0x51, byte_FpgaUpdateFileReadBuf, 4, uint_FpgaUpdateFileReadLen);
+
+                }
 
 
-			}
-			pDlg->FpgaWrite(0, 0x700, 0x0);
-
-			// tap状态机进入“RUN-TEST/IDLE”状态，TMS输出“01”
-			pDlg->FpgaWrite(0, 0x50, 0x2);
-			pDlg->FpgaWrite(0, 0x51, 0x0000000100000000);
-
-			// Loading device with a `jstart` instruction. 
-			pDlg->JtagSIR(6,0xc);
-			Sleep(1);
-			//Loading device with 'bypass' instruction.
-			pDlg->JtagSIR(6,0x3f);
-			//Loading device with 'bypass' instruction.
-			pDlg->JtagSIR(6,0x3f);
-
-			// Loading device with a `jstart` instruction. 
-			pDlg->JtagSIR(6,0xc);
-			Sleep(1);
-			pDlg->JtagSIR(6,0x3f);
-			pDlg->JtagSDR(1,0x0);
-
-			Sleep(500);
-			// 从主控fpga读取实验fpga加载完成标志位
-			str_FpgaReadData = pDlg->FpgaRead(0x10);
-			unsigned __int64 uint64_FpgaReadData = _tcstoui64(str_FpgaReadData,0,16);
-
-			if (pDlg->Idc_Check_FPGAUpdateJtagTestEn.GetCheck())
-			{
-				// 关闭jtag加载超时定时器
-				pDlg->KillTimer(TIMERID_JTAG_TIMEOUT);
-
-				// 实验fpga加载成功
-				if ((uint64_FpgaReadData & 0x0000000000004000) == 0x0000000000004000)
-				{
-
-					pDlg->WriteLogFile(1,_T("JTAG加载成功。。。"));
-					int_JtagTestSuccessTimes++;
-				}
-				else
-				{
-					pDlg->WriteLogFile(1,_T("JTAG加载失败。。。"));
-					int_JtagTestFailedTimes++;
-				}
-
-				int_JtagTestTotalTimes++;
-
-				str_JtagTestTimesTmp.Format(_T("%d"),int_JtagTestTotalTimes);
-				pDlg->WriteLogFile(0,_T("测试总数：") + str_JtagTestTimesTmp);
-				str_JtagTestTimesTmp.Format(_T("%d"),int_JtagTestSuccessTimes);
-				pDlg->WriteLogFile(0,_T("成功次数：") + str_JtagTestTimesTmp);
-				str_JtagTestTimesTmp.Format(_T("%d"),int_JtagTestFailedTimes);
-				pDlg->WriteLogFile(0,_T("失败次数：") + str_JtagTestTimesTmp);
-			}
-			else
-			{
-				// 关闭jtag加载超时定时器
-				pDlg->KillTimer(TIMERID_JTAG_TIMEOUT);
-
- 				// 实验fpga加载成功
-				if ((uint64_FpgaReadData & 0x0000000000004000) == 0x0000000000004000)
-				{
-					pDlg->int_FpgaUpdateStatus = 1;
-					pDlg->WriteLogFile(1,_T("FPGA 升级："));
-					if (pDlg->int_FpgaUpdateMode == FPGA_UPDATE_MODE_LOCAL)
-					{
-						pDlg->WriteLogFile(0,_T("FPGA本地加载成功！"));
-					}
-					else if (pDlg->int_FpgaUpdateMode == FPGA_UPDATE_MODE_ONLINE)
-					{
-						pDlg->WriteLogFile(0,_T("FPGA在线加载成功！"));
-
-						// 发送烧录成功指令:<Loaded><Result>…</Result></Loaded>
-						pDlg->SendCmd(_T("<Loaded><Result>Successful</Result></Loaded>")); 
-        
-						// 启动数据采集定时器
-						pDlg->SetTimer( TIMERID_DATA_SAMPLE, TIMERID_DATA_SAMPLE_TIME, NULL );
-						pDlg->str_FpgaSampleData0 = _T("");
-						pDlg->str_FpgaSampleData1 = _T("");
+                // 更新烧写进度条
+                uint64_SpiFlashPageAddr += uint_FpgaUpdateFileReadLen;
+                pDlg->Idc_Progress_FpgaUpdateProgress.SetPos(uint64_SpiFlashPageAddr);
 
 
-					
-					}
-				}
-				else
-				{
-					pDlg->int_FpgaUpdateStatus = 2;
-					pDlg->WriteLogFile(1,_T("FPGA 升级："));
-					if (pDlg->int_FpgaUpdateMode == FPGA_UPDATE_MODE_LOCAL)
-					{
-						pDlg->WriteLogFile(0,_T("FPGA本地加载失败！"));
-					}
-					else if (pDlg->int_FpgaUpdateMode == FPGA_UPDATE_MODE_ONLINE)
-					{
-						pDlg->WriteLogFile(0,_T("FPGA在线加载失败！"));
+            }
+            pDlg->FpgaWrite(0, 0x700, 0x0);
 
-						// 发送烧录失败指令:<Loaded><Result>…</Result></Loaded>
-						pDlg->SendCmd(_T("<Loaded><Result>Failed</Result></Loaded>")); 
+            // tap状态机进入“RUN-TEST/IDLE”状态，TMS输出“01”
+            pDlg->FpgaWrite(0, 0x50, 0x2);
+            pDlg->FpgaWrite(0, 0x51, 0x0000000100000000);
 
-						// 更新上位机状态
-						pDlg->str_WorkStatus = _T("Ready");
+            // Loading device with a `jstart` instruction. 
+            pDlg->JtagSIR(6, 0xc);
+            Sleep(1);
+            //Loading device with 'bypass' instruction.
+            pDlg->JtagSIR(6, 0x3f);
+            //Loading device with 'bypass' instruction.
+            pDlg->JtagSIR(6, 0x3f);
 
+            // Loading device with a `jstart` instruction. 
+            pDlg->JtagSIR(6, 0xc);
+            Sleep(1);
+            pDlg->JtagSIR(6, 0x3f);
+            pDlg->JtagSDR(1, 0x0);
 
-					
-					}
-				}
+            Sleep(500);
+            // 从主控fpga读取实验fpga加载完成标志位
+            str_FpgaReadData = pDlg->FpgaRead(0x10);
+            unsigned __int64 uint64_FpgaReadData = _tcstoui64(str_FpgaReadData, 0, 16);
 
-				break;
-			}
+            if (pDlg->Idc_Check_FPGAUpdateJtagTestEn.GetCheck())
+            {
+                // 关闭jtag加载超时定时器
+                pDlg->KillTimer(TIMERID_JTAG_TIMEOUT);
 
-		}
+                // 实验fpga加载成功
+                if ((uint64_FpgaReadData & 0x0000000000004000) == 0x0000000000004000)
+                {
+
+                    pDlg->WriteLogFile(1, _T("JTAG加载成功。。。"));
+                    int_JtagTestSuccessTimes++;
+                }
+                else
+                {
+                    pDlg->WriteLogFile(1, _T("JTAG加载失败。。。"));
+                    int_JtagTestFailedTimes++;
+                }
+
+                int_JtagTestTotalTimes++;
+
+                str_JtagTestTimesTmp.Format(_T("%d"), int_JtagTestTotalTimes);
+                pDlg->WriteLogFile(0, _T("测试总数：") + str_JtagTestTimesTmp);
+                str_JtagTestTimesTmp.Format(_T("%d"), int_JtagTestSuccessTimes);
+                pDlg->WriteLogFile(0, _T("成功次数：") + str_JtagTestTimesTmp);
+                str_JtagTestTimesTmp.Format(_T("%d"), int_JtagTestFailedTimes);
+                pDlg->WriteLogFile(0, _T("失败次数：") + str_JtagTestTimesTmp);
+            }
+            else
+            {
+                // 关闭jtag加载超时定时器
+                pDlg->KillTimer(TIMERID_JTAG_TIMEOUT);
+
+                // 实验fpga加载成功
+                if ((uint64_FpgaReadData & 0x0000000000004000) == 0x0000000000004000)
+                {
+                    pDlg->int_FpgaUpdateStatus = 1;
+                    pDlg->WriteLogFile(1, _T("FPGA 升级："));
+                    if (pDlg->int_FpgaUpdateMode == FPGA_UPDATE_MODE_LOCAL)
+                    {
+                        pDlg->WriteLogFile(0, _T("FPGA本地加载成功！"));
+                    }
+                    else if (pDlg->int_FpgaUpdateMode == FPGA_UPDATE_MODE_ONLINE)
+                    {
+                        pDlg->WriteLogFile(0, _T("FPGA在线加载成功！"));
+
+                        // 发送烧录成功指令:<Loaded><Result>…</Result></Loaded>
+                        pDlg->wsEndpoint->send("<Loaded><Result>Successful</Result></Loaded>");
+                        // 启动数据采集定时器
+                        pDlg->SetTimer(TIMERID_DATA_SAMPLE, TIMERID_DATA_SAMPLE_TIME, NULL);
+                        pDlg->str_FpgaSampleData0 = _T("");
+                        pDlg->str_FpgaSampleData1 = _T("");
 
 
 
-	}
+                    }
+                }
+                else
+                {
+                    pDlg->int_FpgaUpdateStatus = 2;
+                    pDlg->WriteLogFile(1, _T("FPGA 升级："));
+                    if (pDlg->int_FpgaUpdateMode == FPGA_UPDATE_MODE_LOCAL)
+                    {
+                        pDlg->WriteLogFile(0, _T("FPGA本地加载失败！"));
+                    }
+                    else if (pDlg->int_FpgaUpdateMode == FPGA_UPDATE_MODE_ONLINE)
+                    {
+                        pDlg->WriteLogFile(0, _T("FPGA在线加载失败！"));
+
+                        // 发送烧录失败指令:<Loaded><Result>…</Result></Loaded>
+                        pDlg->wsEndpoint->send("<Loaded><Result>Failed</Result></Loaded>");
+
+                        // 更新上位机状态
+                        pDlg->str_WorkStatus = _T("Ready");
+                    }
+                }
+                break;
+            }
+        }
+    }
 
 
 	//关闭文件
@@ -903,6 +890,7 @@ void CUpperComputerDlg::JtagSDR(unsigned __int64 uint64_DRLengthInBit,unsigned _
 
 
 // 向服务器发送指令
+
 void CUpperComputerDlg::SendCmd(CString str_SendStr)
 {
 	int send_status;
@@ -976,7 +964,7 @@ void CUpperComputerDlg::LogDisplay(int int_NewLog, CString str_Log )
         CString str_CurrentTime;   
         CTime time_CurrentTime = CTime::GetCurrentTime();   
         str_CurrentTime = time_CurrentTime.Format(_T("%Y-%m-%d %H:%M:%S")); 
-        str_CurrentTime = _T("\r\n") + str_CurrentTime + _T("\r\n");
+        str_CurrentTime = _T("\r") + str_CurrentTime + _T("\r\n");
 
 		//DWORD dw_CurrentTime;
 		//dw_CurrentTime = timeGetTime();
@@ -1864,14 +1852,9 @@ void CUpperComputerDlg::OnBnClickedButtonConnect()// 为WebSocket重写之
         // 断开连接可用
         Idc_Button_ServerDisconnect.SetWindowText(_T("断开"));
         Idc_Button_ServerDisconnect.EnableWindow(TRUE);
-
+        // 连接状态置1
         m_ServerConnectStatus = 1;
-        // 日志：“服务器连接成功：”
-        // “IP地址：xxx”
-        // “端口号：TCP-xxxx”
-        WriteLogFile(1, _T("服务器连接成功："));
-        WriteLogFile(0, _T("IP地址：") + str_ServerIPAddress);
-        WriteLogFile(0, _T("端口号：") + str_ServerStatusPort);
+
         // 连接成功后发送注册请求
         wsEndpoint->send(std::string("<Register><Id>") + LPCSTR(str_UpperComputerID) + "</Id></Register>");
     }
@@ -1880,12 +1863,6 @@ void CUpperComputerDlg::OnBnClickedButtonConnect()// 为WebSocket重写之
         // 状态不变
         m_ServerConnectStatus = 0;
         m_ServerRegisterStatus = 0;
-        // 日志：“服务器连接失败：”
-        // “IP地址：xxx”
-        // “端口号：TCP-xxxx”
-        WriteLogFile(1, _T("服务器连接失败："));
-        WriteLogFile(0, _T("IP地址：") + str_ServerIPAddress);
-        WriteLogFile(0, _T("端口号：") + str_ServerStatusPort);
     }
 }
 /*
@@ -1938,7 +1915,9 @@ void CUpperComputerDlg::OnBnClickedButtonDisconnect()// 重写
     str_WorkStatus = _T("Ready");
     // 初始化数据写入主控fpga
     FpgaWrite(0, 0x10, 0xffffffffffffffff);
-
+    // 更新状态
+    m_ServerConnectStatus = 0;
+    m_ServerRegisterStatus = 0;
     //已断开,连接按钮设为可用
     Idc_Button_ServerConnect.SetWindowText(_T("连接"));
     Idc_Button_ServerConnect.EnableWindow(TRUE);
@@ -1970,7 +1949,8 @@ void CUpperComputerDlg::OnTimer(UINT nIDEvent)
 			OnBnClickedButtonConnect();
             m_ServerRegisterStatus = 0;
             //关闭文件
-            m_StatusSocket->f_LoadFile.Abort();
+            //m_StatusSocket->f_LoadFile.Abort();
+            wsEndpoint->closeFile();
 
 		}
 		// 注册不成功，继续向服务器发送注册请求
@@ -1986,16 +1966,12 @@ void CUpperComputerDlg::OnTimer(UINT nIDEvent)
             WriteLogFile(1,_T("服务器注册失败。"));
 
             // 向服务器发送注册指令
-            SendCmd(CString(_T("<Register><Id>")) + str_UpperComputerID + CString(_T("</Id></Register>")));
-
+            wsEndpoint->send(std::string("<Register><Id>") + LPCSTR(str_UpperComputerID) + "</Id></Register>");
 		}
-
         if (cpubsub_MasterCom.m_hCom==INVALID_HANDLE_VALUE)
         {
             AutoOpenMasterCom();
         }
-
-
 	}
 	else if ( nIDEvent == TIMERID_DATA_SAMPLE )
 	{
@@ -2031,8 +2007,9 @@ void CUpperComputerDlg::OnTimer(UINT nIDEvent)
                 str_FpgaSampleData0 = str_FpgaReadData0;
                 str_FpgaSampleData1 = str_FpgaReadData1;
                 // 发送数据指令：<Data>…</Data>
-                SendCmd(_T("<Data>")+str_FpgaSampleData0+str_FpgaSampleData1.Mid(16-10,10)+str_FpgaSetData0.Mid(16-4,4)+str_FpgaSetData1+_T("</Data>"));
-
+                //SendCmd(_T("<Data>")+str_FpgaSampleData0+str_FpgaSampleData1.Mid(16-10,10)+str_FpgaSetData0.Mid(16-4,4)+str_FpgaSetData1+_T("</Data>"));
+                CString toSend = _T("<Data>") + str_FpgaSampleData0 + str_FpgaSampleData1.Mid(16 - 10, 10) + str_FpgaSetData0.Mid(16 - 4, 4) + str_FpgaSetData1 + _T("</Data>");
+                wsEndpoint->send(LPCSTR(toSend));
             }
 
 
@@ -2078,8 +2055,13 @@ void CUpperComputerDlg::OnTimer(UINT nIDEvent)
 				str_Ps2MouseSendDataLength.Format(_T("%d"),int_Ps2MouseSendDataLength);
 				str_Ps2KeyboardSendDataLength.Format(_T("%d"),int_Ps2KeyboardSendDataLength);
 
-                SendCmd(_T("<PS2Send><MouseLength>")+str_Ps2MouseSendDataLength+_T("</MouseLength><MouseData>")+str_Ps2MouseSendData+_T("</MouseData><KeyboardLength>")+str_Ps2KeyboardSendDataLength+_T("</KeyboardLength><KeyboardData>")+str_Ps2KeyboardSendData+_T("</KeyboardData></PS2Send>"));
-			}
+                //SendCmd(_T("<PS2Send><MouseLength>")+str_Ps2MouseSendDataLength+_T("</MouseLength><MouseData>")+str_Ps2MouseSendData+_T("</MouseData><KeyboardLength>")+str_Ps2KeyboardSendDataLength+_T("</KeyboardLength><KeyboardData>")+str_Ps2KeyboardSendData+_T("</KeyboardData></PS2Send>"));
+                CString toSend = _T("<PS2Send><MouseLength>") + str_Ps2MouseSendDataLength 
+                    + _T("</MouseLength><MouseData>") + str_Ps2MouseSendData + _T("</MouseData><KeyboardLength>") 
+                    + str_Ps2KeyboardSendDataLength + _T("</KeyboardLength><KeyboardData>") 
+                    + str_Ps2KeyboardSendData + _T("</KeyboardData></PS2Send>");
+                wsEndpoint->send(LPCSTR(toSend));
+            }
         }
 
 
@@ -2100,8 +2082,9 @@ void CUpperComputerDlg::OnTimer(UINT nIDEvent)
 
             // 直接把采集到的数据发送给服务器
             // 发送测试返回数据指令：<Test>…</Test>
-            SendCmd(_T("<Test>")+str_FpgaReadData0+str_FpgaReadData1.Mid(16-10,10)+str_FpgaSetData0.Mid(16-4,4)+str_FpgaSetData1+_T("</Test>"));
-
+            //SendCmd(_T("<Test>")+str_FpgaReadData0+str_FpgaReadData1.Mid(16-10,10)+str_FpgaSetData0.Mid(16-4,4)+str_FpgaSetData1+_T("</Test>"));
+            CString toSend = _T("<Test>") + str_FpgaReadData0 + str_FpgaReadData1.Mid(16 - 10, 10) + str_FpgaSetData0.Mid(16 - 4, 4) + str_FpgaSetData1 + _T("</Test>");
+            wsEndpoint->send(LPCSTR(toSend));
         }
 
     }
@@ -2113,13 +2096,15 @@ void CUpperComputerDlg::OnTimer(UINT nIDEvent)
 	    KillTimer(TIMERID_FILEREV);
 
         // 加载文件接收使能关闭
-        m_StatusSocket->bool_ServerFileRevEn = 0;
+        //m_StatusSocket->bool_ServerFileRevEn = 0;
+        wsEndpoint->setFileRcvEnable(false);
         //关闭文件
-        m_StatusSocket->f_LoadFile.Abort();
+        //m_StatusSocket->f_LoadFile.Abort();
+        wsEndpoint->closeFile();
 
 		// 发送接收失败指令:<Receive><Result>…</Result></Receive>
-		SendCmd(_T("<Receive><Result>Failed</Result></Receive>")); 
-
+		//SendCmd(_T("<Receive><Result>Failed</Result></Receive>")); 
+        wsEndpoint->send("<Receive><Result>Failed</Result></Receive>");
 
 		// 日志："文件接收失败："
         WriteLogFile(1,_T("文件接收失败：文件接收超时。"));
@@ -2162,8 +2147,8 @@ void CUpperComputerDlg::OnTimer(UINT nIDEvent)
 
 			// 向服务器发送实验串口接收到的数据指令：<COMSend><Length>…</Length><Data>…</Data></COMSend>
 			str_temp = _T("<COMSend><Length>") + str_ExpComReadLength + _T("</Length>") + _T("<Data>")+str_ExpComReadData+_T("</Data></COMSend>");
-			SendCmd(str_temp);
-
+			//SendCmd(str_temp);
+            wsEndpoint->send(LPCSTR(str_temp));
 
 		}
 
@@ -2189,13 +2174,10 @@ void CUpperComputerDlg::OnTimer(UINT nIDEvent)
 			WriteLogFile(0,_T("FPGA在线加载超时失败！"));
 
 			// 发送烧录失败指令:<Loaded><Result>…</Result></Loaded>
-			SendCmd(_T("<Loaded><Result>Failed</Result></Loaded>")); 
-
+			//SendCmd(_T("<Loaded><Result>Failed</Result></Loaded>")); 
+            wsEndpoint->send("<Loaded><Result>Failed</Result></Loaded>");
 			// 更新上位机状态
 			str_WorkStatus = _T("Ready");
-
-
-					
 		}
 
 	}
@@ -3488,4 +3470,15 @@ void CUpperComputerDlg::OnBnClickedButtonHardwareteststop()
 void CUpperComputerDlg::OnBnClickedButtonFpgaupdatestop()
 {
 	// TODO: 在此添加控件通知处理程序代码
+}
+
+
+void CUpperComputerDlg::OnEnChangeEditLogdisplay()
+{
+    // TODO:  如果该控件是 RICHEDIT 控件，它将不
+    // 发送此通知，除非重写 CDialogEx::OnInitDialog()
+    // 函数并调用 CRichEditCtrl().SetEventMask()，
+    // 同时将 ENM_CHANGE 标志“或”运算到掩码中。
+
+    // TODO:  在此添加控件通知处理程序代码
 }

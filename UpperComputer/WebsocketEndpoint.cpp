@@ -17,10 +17,12 @@ WebsocketEndpoint::WebsocketEndpoint()
 WebsocketEndpoint::~WebsocketEndpoint()
 {
     m_endpoint.stop_perpetual();
+    auto pDlg = (CUpperComputerDlg*)(AfxGetApp()->m_pMainWnd);
+    pDlg->WriteLogFile(1, _T("正在关闭终端......"));
     if (m_conptr->getStatus() == "Open")// close opening connection
     {
         std::error_code ec;
-        // todo
+        m_endpoint.close(m_conptr->getHdl(), websocketpp::close::status::going_away, "App closed!", ec);
     }
 }
 
@@ -28,9 +30,10 @@ int WebsocketEndpoint::connect(std::string const &uri)
 {
     std::error_code ec;
     client::connection_ptr con = m_endpoint.get_connection(uri, ec);
+    auto pDlg = (CUpperComputerDlg*)(AfxGetApp()->m_pMainWnd);
     if (ec)
     {
-        //TODO
+        pDlg->WriteLogFile(1, _T("初始化连接失败！"));
         return -1;
     }
     m_conptr.reset(new ConnectMetadata(con->get_handle(), uri));
@@ -46,6 +49,8 @@ void WebsocketEndpoint::close(websocketpp::close::status::value code, std::strin
 {
     std::error_code ec;
     m_endpoint.close(m_conptr->getHdl(), code, reason, ec);
+    closeFile();
+    setFileRcvEnable(false);
     if(ec)
     {
         // TODO
@@ -59,17 +64,25 @@ void WebsocketEndpoint::send(std::string message)
     auto pDlg = (CUpperComputerDlg*)(AfxGetApp()->m_pMainWnd);// 对话框指针
     if (ec)
     {
-        pDlg->WriteLogFile(1, _T("发送消息失败，错误信息："));
-        pDlg->WriteLogFile(0, CSTR(ec.message()));
+        pDlg->WriteLogFile(1, CString(_T("发送消息失败，错误信息：")) + CSTR(ec.message()));
     }
     else
     {
-        pDlg->WriteLogFile(1, _T("发送："));
-        pDlg->WriteLogFile(0, CSTR(message));
+        pDlg->WriteLogFile(1, CString(_T("发送：")) + CSTR(message));
     }
 }
 
 std::string WebsocketEndpoint::getConStatus() const
 {
     return  m_conptr->getStatus();
+}
+
+void WebsocketEndpoint::setFileRcvEnable(bool flag)
+{
+    m_conptr->setFileRcvEnable(flag);
+}
+
+void WebsocketEndpoint::closeFile()
+{
+    m_conptr->closeFile();
 }
