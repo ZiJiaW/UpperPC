@@ -9,7 +9,7 @@ using std::string;
 
 
 ConnectMetadata::ConnectMetadata(websocketpp::connection_hdl hdl, string uri):
-    m_hdl(hdl), m_uri(uri), m_status("Connecting"), m_server("None"), m_errorReason(""), m_fileRcvEnable(false), m_fileRcvLengthSum(0){}
+    m_hdl(hdl), m_uri(uri), m_status("Connecting"), m_server("None"), m_errorReason(""), m_fileRcvEnable(false), m_fileRcvLengthSum(0), m_over50(false){}
 
 ConnectMetadata::~ConnectMetadata(){}
 
@@ -78,7 +78,7 @@ void ConnectMetadata::onMessage(websocketpp::connection_hdl hdl, client::message
         pDlg->WriteLogFile(1, CString(_T("收到text消息：")) + CSTR(serverMessage));
     }
     else {
-        pDlg->WriteLogFile(1, CString(_T("收到binary消息：")) + CSTR(websocketpp::utility::to_hex(serverMessage)));
+        //pDlg->WriteLogFile(1, CString(_T("收到binary消息：")) + CSTR(websocketpp::utility::to_hex(serverMessage)));
     }
     if (!m_fileRcvEnable)// 不在传输文件
     {
@@ -129,14 +129,16 @@ void ConnectMetadata::onMessage(websocketpp::connection_hdl hdl, client::message
                 {
                     // 日志：“文件创建成功：”
                     pDlg->WriteLogFile(1, _T("文件创建成功。"));
-                    // 响应指令
-                    pDlg->wsEndpoint->send("<File></File>");
                     // 启动文件接收超时定时器
                     pDlg->SetTimer(TIMERID_FILEREV, TIMERID_FILEREV_TIME, NULL);
                     // 接收长度清零
                     m_fileRcvLengthSum = 0;
                     // 文件接收使能有效
                     m_fileRcvEnable = true;
+                    m_over50 = false;
+                    // 响应指令
+                    pDlg->wsEndpoint->send("<File></File>");
+                    pDlg->WriteLogFile(0, _T("开始接收文件......"));
                 }
                 break;
             }
@@ -365,7 +367,12 @@ void ConnectMetadata::onMessage(websocketpp::connection_hdl hdl, client::message
     {
         size_t lenOfSlice = serverMessage.length();
         m_fileRcvLengthSum += lenOfSlice;
-        pDlg->WriteLogFile(0, "接收文件片段长度：" + lenOfSlice);
+        //pDlg->WriteLogFile(1, _T("接收文件片段长度：") + lenOfSlice);
+        if (!m_over50 && double(m_fileRcvLengthSum) / pDlg->uint_ServerMsg_FileLength > 0.5)
+        {
+            pDlg->WriteLogFile(0, _T("已接收50%......"));
+            m_over50 = true;
+        }
         m_loadFile.Write(serverMessage.c_str(), lenOfSlice);
         if (m_fileRcvLengthSum >= pDlg->uint_ServerMsg_FileLength)// 总长度达到期望文件长度，停止接收并处理
         {
@@ -377,7 +384,7 @@ void ConnectMetadata::onMessage(websocketpp::connection_hdl hdl, client::message
                 // 发送接收确认指令:<Receive><Result>…</Result></Receive>
                 pDlg->wsEndpoint->send("<Receive><Result>Successful</Result></Receive>");
                 // 日志："文件接收成功："
-                pDlg->WriteLogFile(1, _T("文件接收成功。"));
+                pDlg->WriteLogFile(0, _T("文件接收成功。"));
                 // 设置fpga升级模式为在线模式
                 pDlg->int_FpgaUpdateMode = FPGA_UPDATE_MODE_ONLINE;
                 // 选择jtag加载模式
@@ -390,10 +397,10 @@ void ConnectMetadata::onMessage(websocketpp::connection_hdl hdl, client::message
             else //长度不对，接受失败
             {
                 pDlg->wsEndpoint->send("<Receive><Result>Failed</Result></Receive>");
-                pDlg->WriteLogFile(1, _T("文件接收失败：文件超长。"));
+                pDlg->WriteLogFile(0, _T("文件接收失败：文件超长。"));
             }
+            m_fileRcvEnable = false;// 文件接收使能关闭
         }
-        m_fileRcvEnable = false;// 文件接收使能关闭
     }
 }
 

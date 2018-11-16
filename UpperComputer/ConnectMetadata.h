@@ -26,6 +26,7 @@ private:
     std::string m_errorReason;
 
     bool m_fileRcvEnable;
+    bool m_over50;
     CFile m_loadFile;
     DWORD m_fileRcvLengthSum;
 
