@@ -56,7 +56,7 @@ void WebsocketEndpoint::close(websocketpp::close::status::value code, std::strin
         // TODO
     }
 }
-void WebsocketEndpoint::send(std::string message)
+void WebsocketEndpoint::send(std::string message, bool toPrint)
 {
     std::error_code ec;
     m_endpoint.send(m_conptr->getHdl(), message, websocketpp::frame::opcode::text, ec);
@@ -68,7 +68,7 @@ void WebsocketEndpoint::send(std::string message)
     }
     else
     {
-        pDlg->WriteLogFile(1, CString(_T("·¢ËÍ£º")) + CSTR(message));
+        if(toPrint) pDlg->WriteLogFile(1, CString(_T("·¢ËÍ£º")) + CSTR(message));
     }
 }
 

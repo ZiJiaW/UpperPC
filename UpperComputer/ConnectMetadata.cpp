@@ -74,16 +74,59 @@ void ConnectMetadata::onMessage(websocketpp::connection_hdl hdl, client::message
 {
     auto pDlg = (CUpperComputerDlg*)(AfxGetApp()->m_pMainWnd);
     auto serverMessage = msg->get_payload();
+    bool isBinary = false;
     if (msg->get_opcode() == websocketpp::frame::opcode::text) {
-        pDlg->WriteLogFile(1, CString(_T("收到text消息：")) + CSTR(serverMessage));
+        //pDlg->WriteLogFile(1, CString(_T("收到text消息：")) + CSTR(serverMessage));
     }
     else {
+        isBinary = true; //二进制消息
         //pDlg->WriteLogFile(1, CString(_T("收到binary消息：")) + CSTR(websocketpp::utility::to_hex(serverMessage)));
     }
-    if (!m_fileRcvEnable)// 不在传输文件
+    if (isBinary && m_fileRcvEnable)// 接收文件，只处理二进制消息
+    {
+        size_t lenOfSlice = serverMessage.length();
+        m_fileRcvLengthSum += lenOfSlice;
+        //pDlg->WriteLogFile(1, _T("接收文件片段长度：") + lenOfSlice);
+        if (!m_over50 && double(m_fileRcvLengthSum) / pDlg->uint_ServerMsg_FileLength > 0.5)
+        {
+            pDlg->WriteLogFile(0, _T("已接收50%......"));
+            m_over50 = true;
+        }
+        m_loadFile.Write(serverMessage.c_str(), lenOfSlice);
+        if (m_fileRcvLengthSum >= pDlg->uint_ServerMsg_FileLength)// 总长度达到期望文件长度，停止接收并处理
+        {
+            // 关闭文件接收超时定时器
+            pDlg->KillTimer(TIMERID_FILEREV);
+            m_loadFile.Close();
+            if (m_fileRcvLengthSum == pDlg->uint_ServerMsg_FileLength)// 长度对应相等
+            {
+                // 发送接收确认指令:<Receive><Result>…</Result></Receive>
+                pDlg->wsEndpoint->send("<Receive><Result>Successful</Result></Receive>");
+                // 日志："文件接收成功："
+                pDlg->WriteLogFile(0, _T("文件接收成功。"));
+                // 设置fpga升级模式为在线模式
+                pDlg->int_FpgaUpdateMode = FPGA_UPDATE_MODE_ONLINE;
+                // 选择jtag加载模式
+                pDlg->Idc_Check_FPGAUpdateJtagTestEn.SetCheck(0);
+                pDlg->Idc_Radio_FPGAUpdateJtagSelect.SetCheck(1);
+                pDlg->Idc_Radio_FPGAUpdateSpiFlashSelect.SetCheck(0);
+                // 启动烧写线程
+                pDlg->FpgaUpdateThreadStart();
+            }
+            else //长度不对，接受失败
+            {
+                pDlg->wsEndpoint->send("<Receive><Result>Failed</Result></Receive>");
+                pDlg->WriteLogFile(0, _T("文件接收失败：文件超长。"));
+            }
+            m_fileRcvEnable = false;// 文件接收使能关闭
+        }
+    }
+    else// 不在传输文件
     {
         if (parseCmd(serverMessage))
         {
+            if(pDlg->uint_ServerMsg_Cmd != SERVERCMD_ASKSTATE)
+                pDlg->WriteLogFile(1, CString(_T("收到text消息：")) + CSTR(serverMessage));
             switch (pDlg->uint_ServerMsg_Cmd)
             {
             case SERVERCMD_RECORD:
@@ -92,13 +135,13 @@ void ConnectMetadata::onMessage(websocketpp::connection_hdl hdl, client::message
                 pDlg->m_ServerRegisterStatus = 1;
                 break;
             }
-            case SERVERCMD_ASKSTATE:
+            case SERVERCMD_ASKSTATE:// 心跳应答
             {
-                pDlg->WriteLogFile(1, _T("收到服务器查询上位机状态指令!"));
+                //pDlg->WriteLogFile(1, _T("收到服务器查询上位机状态指令!"));
                 CString toSend = _T("<Client><key>") + pDlg->str_ServerMsg_Key + pDlg->str_UpperComputerID + 
                     _T("</key><type>ReplyToServerWithState</type><state>") + pDlg->str_WorkStatus + _T("</state></Client>");
-                pDlg->WriteLogFile(0, _T("发送上位机状态指令："));
-                pDlg->wsEndpoint->send(LPCSTR(toSend));
+                //pDlg->WriteLogFile(0, _T("发送上位机状态指令："));
+                pDlg->wsEndpoint->send(LPCSTR(toSend), false);
                 break;
             }
             case SERVERCMD_LOAD:
@@ -363,45 +406,7 @@ void ConnectMetadata::onMessage(websocketpp::connection_hdl hdl, client::message
             pDlg->WriteLogFile(1, CString(_T("接收到无法解析的内容：")) + CSTR(serverMessage));
         }
     }
-    else// 接收文件
-    {
-        size_t lenOfSlice = serverMessage.length();
-        m_fileRcvLengthSum += lenOfSlice;
-        //pDlg->WriteLogFile(1, _T("接收文件片段长度：") + lenOfSlice);
-        if (!m_over50 && double(m_fileRcvLengthSum) / pDlg->uint_ServerMsg_FileLength > 0.5)
-        {
-            pDlg->WriteLogFile(0, _T("已接收50%......"));
-            m_over50 = true;
-        }
-        m_loadFile.Write(serverMessage.c_str(), lenOfSlice);
-        if (m_fileRcvLengthSum >= pDlg->uint_ServerMsg_FileLength)// 总长度达到期望文件长度，停止接收并处理
-        {
-            // 关闭文件接收超时定时器
-            pDlg->KillTimer(TIMERID_FILEREV);
-            m_loadFile.Close();
-            if (m_fileRcvLengthSum == pDlg->uint_ServerMsg_FileLength)// 长度对应相等
-            {
-                // 发送接收确认指令:<Receive><Result>…</Result></Receive>
-                pDlg->wsEndpoint->send("<Receive><Result>Successful</Result></Receive>");
-                // 日志："文件接收成功："
-                pDlg->WriteLogFile(0, _T("文件接收成功。"));
-                // 设置fpga升级模式为在线模式
-                pDlg->int_FpgaUpdateMode = FPGA_UPDATE_MODE_ONLINE;
-                // 选择jtag加载模式
-                pDlg->Idc_Check_FPGAUpdateJtagTestEn.SetCheck(0);
-                pDlg->Idc_Radio_FPGAUpdateJtagSelect.SetCheck(1);
-                pDlg->Idc_Radio_FPGAUpdateSpiFlashSelect.SetCheck(0);
-                // 启动烧写线程
-                pDlg->FpgaUpdateThreadStart();
-            }
-            else //长度不对，接受失败
-            {
-                pDlg->wsEndpoint->send("<Receive><Result>Failed</Result></Receive>");
-                pDlg->WriteLogFile(0, _T("文件接收失败：文件超长。"));
-            }
-            m_fileRcvEnable = false;// 文件接收使能关闭
-        }
-    }
+    
 }
 
 websocketpp::connection_hdl ConnectMetadata::getHdl() const
@@ -435,6 +440,7 @@ bool ConnectMetadata::parseCmd(string cmd)
 {
     auto pDlg = (CUpperComputerDlg*)(AfxGetApp()->m_pMainWnd);
     CString str_ServerCmdStr = CSTR(cmd);
+    
     // 注册确认指令：<Record><DataPort>…</DataPort></Record>
     if (str_ServerCmdStr.Left(strlen("<Record>")) == "<Record>")
     {
@@ -487,12 +493,14 @@ bool ConnectMetadata::parseCmd(string cmd)
     // <Server><key>(key value)[string]</key><type>AskClientState</type></Server>
     else if (str_ServerCmdStr.Left(strlen("<Server><key>")) == "<Server><key>")
     {
-        pDlg->str_ServerMsg_Key = getParamFromCmd(str_ServerCmdStr, _T("<key>"));
-        pDlg->str_ServerMsg_Type = getParamFromCmd(str_ServerCmdStr, _T("<type>"));
-        if (pDlg->str_ServerMsg_Type == "AskClientState")
+        pDlg->str_ServerMsg_Key = getParamFromCmd(str_ServerCmdStr, _T("key"));
+        pDlg->str_ServerMsg_Type = getParamFromCmd(str_ServerCmdStr, _T("type"));
+        /*if (pDlg->str_ServerMsg_Type == "AskClientState")
         {
             pDlg->uint_ServerMsg_Cmd = SERVERCMD_ASKSTATE;
-        }
+        }*/
+        pDlg->uint_ServerMsg_Cmd = SERVERCMD_ASKSTATE;
+        //pDlg->WriteLogFile(0, _T(pDlg->str_ServerMsg_Type));
         return true;
     }
     // 准备指令：<Ready></Ready>

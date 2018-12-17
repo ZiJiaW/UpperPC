@@ -9,7 +9,7 @@ public:
 
     int connect(std::string const &uri);
     void close(websocketpp::close::status::value code, std::string reason);
-    void send(std::string message);
+    void send(std::string message, bool toPrint = true);
 
     std::string getConStatus() const;
     void setFileRcvEnable(bool flag);
