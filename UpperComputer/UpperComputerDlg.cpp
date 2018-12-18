@@ -264,7 +264,8 @@ BOOL CUpperComputerDlg::OnInitDialog()
 
 	// 启动注册定时器
 	SetTimer( TIMERID_REGISTER, TIMERID_REGISTER_TIME, NULL );
-
+    // 启动断网检测
+    SetTimer(TIMERID_CHECK_CONNECT, TIMERID_CHECK_CONNECT_TIME, NULL);
 	//// 打开ft232h
 	//OnBnClickedButtonComopen();
 
@@ -890,7 +891,7 @@ void CUpperComputerDlg::JtagSDR(unsigned __int64 uint64_DRLengthInBit,unsigned _
 
 
 // 向服务器发送指令
-
+/*
 void CUpperComputerDlg::SendCmd(CString str_SendStr)
 {
 	int send_status;
@@ -904,7 +905,7 @@ void CUpperComputerDlg::SendCmd(CString str_SendStr)
 	    WriteLogFile(0,str_SendStr);
     //}
 
-}
+}*/
 
 // 自动打开串口，从COM1到COM255扫描并打开，打开后访问fpga寄存器，能访问到表示打开成功。
 BOOL CUpperComputerDlg::AutoOpenMasterCom()
@@ -1842,6 +1843,7 @@ void CUpperComputerDlg::OnBnClickedButtonConnect()// 为WebSocket重写之
     // say: ws://127.0.0.1:9002
     CString uri = "ws://" + str_ServerIPAddress + ":" + str_ServerStatusPort;
     bool success = wsEndpoint->connect(LPCSTR(uri)) == 1;
+    /*
     while(wsEndpoint->getConStatus() == "Connecting"){}// wait for connecting
     success &= wsEndpoint->getConStatus() == "Open";// successfully open
     if (success)
@@ -1863,7 +1865,7 @@ void CUpperComputerDlg::OnBnClickedButtonConnect()// 为WebSocket重写之
         // 状态不变
         m_ServerConnectStatus = 0;
         m_ServerRegisterStatus = 0;
-    }
+    }*/
 }
 /*
 void CUpperComputerDlg::OnBnClickedButtonDisconnect()
@@ -1934,7 +1936,17 @@ void CUpperComputerDlg::OnTimer(UINT nIDEvent)
     CString str_FpgaReadData1;
 	CString str_temp;
 
-
+    if (nIDEvent == TIMERID_CHECK_CONNECT)
+    {
+        if (m_ServerConnectStatus == 1)
+        {
+            int time = CTime::GetCurrentTime().GetTime();
+            if (time - last_check_time >= 20)
+            {
+                wsEndpoint->close(1000, "timeout");
+            }
+        }
+    }
     if ( nIDEvent == TIMERID_REGISTER )
 	{
 		// 连接不成功，继续向服务器发送连接请求

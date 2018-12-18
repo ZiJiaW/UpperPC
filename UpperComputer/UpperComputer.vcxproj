@@ -111,7 +111,6 @@
   <ItemGroup>
     <ClInclude Include="ConnectMetadata.h" />
     <ClInclude Include="PubSub.h" />
-    <ClInclude Include="StatusSocket.h" />
     <ClInclude Include="define.h" />
     <ClInclude Include="Resource.h" />
     <ClInclude Include="stdafx.h" />
@@ -123,7 +122,6 @@
   <ItemGroup>
     <ClCompile Include="ConnectMetadata.cpp" />
     <ClCompile Include="PubSub.cpp" />
-    <ClCompile Include="StatusSocket.cpp" />
     <ClCompile Include="stdafx.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Create</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Create</PrecompiledHeader>

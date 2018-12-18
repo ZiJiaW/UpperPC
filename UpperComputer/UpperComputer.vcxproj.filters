@@ -42,9 +42,6 @@
     <ClInclude Include="define.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="StatusSocket.h">
-      <Filter>头文件</Filter>
-    </ClInclude>
     <ClInclude Include="PubSub.h">
       <Filter>头文件</Filter>
     </ClInclude>
@@ -63,9 +60,6 @@
       <Filter>源文件</Filter>
     </ClCompile>
     <ClCompile Include="stdafx.cpp">
-      <Filter>源文件</Filter>
-    </ClCompile>
-    <ClCompile Include="StatusSocket.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
     <ClCompile Include="PubSub.cpp">

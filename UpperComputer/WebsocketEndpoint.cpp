@@ -41,7 +41,7 @@ int WebsocketEndpoint::connect(std::string const &uri)
     con->set_fail_handler(std::bind(&ConnectMetadata::onFail, m_conptr, &m_endpoint, std::placeholders::_1));
     con->set_close_handler(std::bind(&ConnectMetadata::onClose, m_conptr, &m_endpoint, std::placeholders::_1));
     con->set_message_handler(std::bind(&ConnectMetadata::onMessage, m_conptr, std::placeholders::_1, std::placeholders::_2));
-
+    con->set_pong_timeout(5000);
     m_endpoint.connect(con);
     return 1;
 }

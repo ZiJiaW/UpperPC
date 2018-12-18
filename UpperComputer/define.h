@@ -29,7 +29,7 @@
 //#define TIMERID_VGA_SAMPLE   108       //VGA图像采集定时器
 #define TIMERID_HARDWARE_TEST   109     //硬件自检定时器
 #define TIMERID_JTAG_TIMEOUT   110     //jtag加载超时定时器
-
+#define TIMERID_CHECK_CONNECT 111  //检测断网 
 
 
 // 定时器时间
@@ -43,7 +43,7 @@
 //#define TIMERID_VGA_SAMPLE_TIME   100       //VGA图像采集定时器时间，100毫秒，单位：ms
 #define TIMERID_HARDWARE_TEST_TIME   500      //硬件自检定时器时间，500毫秒，单位：ms
 #define TIMERID_JTAG_TIMEOUT_TIME   60*1000   //jtag加载超时定时器时间，60秒，单位：ms
-
+#define TIMERID_CHECK_CONNECT_TIME 20*1000 // 20s检测断网间隔
 
 
 

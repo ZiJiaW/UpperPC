@@ -60,7 +60,7 @@ public:
 
 
     // 状态端口CSocket
-	StatusSocket* m_StatusSocket;
+	//StatusSocket* m_StatusSocket;
 
     // websocket控制终端
     WebsocketEndpoint* wsEndpoint;
@@ -97,10 +97,11 @@ public:
 	unsigned int uint_ServerMsg_Ps2KeyboardSendDataLength;
 	CString str_ServerMsg_Ps2KeyboardSendData;
 
+    long last_check_time = 0;
 
 
 
-    void SendCmd(CString str_SendStr);
+   // void SendCmd(CString str_SendStr);
 
 
     // 日志文件

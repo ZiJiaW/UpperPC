@@ -21,6 +21,18 @@ void ConnectMetadata::onOpen(client* c, websocketpp::connection_hdl hdl)
     m_server = con->get_response_header("Server");
     pDlg->WriteLogFile(1, CString(_T("连接建立成功：")) + CSTR(m_uri));
     //pDlg->wsEndpoint->send(LPCSTR(CString("hello")));
+    // 已连接,连接按钮设为不可用
+    pDlg->Idc_Button_ServerConnect.SetWindowText(_T("已连接"));
+    pDlg->Idc_Button_ServerConnect.EnableWindow(FALSE);
+    // 断开连接可用
+    pDlg->Idc_Button_ServerDisconnect.SetWindowText(_T("断开"));
+    pDlg->Idc_Button_ServerDisconnect.EnableWindow(TRUE);
+    // 连接状态置1
+    pDlg->m_ServerConnectStatus = 1;
+    // 刷新网络检测时间记录结点
+    pDlg->last_check_time = CTime::GetCurrentTime().GetTime();
+    // 连接成功后发送注册请求
+    pDlg->wsEndpoint->send(std::string("<Register><Id>") + LPCSTR(pDlg->str_UpperComputerID) + "</Id></Register>");
 }
 
 void ConnectMetadata::onFail(client* c, websocketpp::connection_hdl hdl)
@@ -30,6 +42,8 @@ void ConnectMetadata::onFail(client* c, websocketpp::connection_hdl hdl)
     client::connection_ptr con = c->get_con_from_hdl(hdl);
     m_server = con->get_response_header("Server");
     m_errorReason = con->get_ec().message();
+    pDlg->m_ServerConnectStatus = 0;
+    pDlg->m_ServerRegisterStatus = 0;
     pDlg->WriteLogFile(1, CString(_T("连接建立失败：")) + CSTR(m_uri));
 }
 void ConnectMetadata::onClose(client* c, websocketpp::connection_hdl hdl)
@@ -125,7 +139,7 @@ void ConnectMetadata::onMessage(websocketpp::connection_hdl hdl, client::message
     {
         if (parseCmd(serverMessage))
         {
-            if(pDlg->uint_ServerMsg_Cmd != SERVERCMD_ASKSTATE)
+            //if(pDlg->uint_ServerMsg_Cmd != SERVERCMD_ASKSTATE)
                 pDlg->WriteLogFile(1, CString(_T("收到text消息：")) + CSTR(serverMessage));
             switch (pDlg->uint_ServerMsg_Cmd)
             {
@@ -142,6 +156,7 @@ void ConnectMetadata::onMessage(websocketpp::connection_hdl hdl, client::message
                     _T("</key><type>ReplyToServerWithState</type><state>") + pDlg->str_WorkStatus + _T("</state></Client>");
                 //pDlg->WriteLogFile(0, _T("发送上位机状态指令："));
                 pDlg->wsEndpoint->send(LPCSTR(toSend), false);
+                pDlg->last_check_time = CTime::GetCurrentTime().GetTime();
                 break;
             }
             case SERVERCMD_LOAD:
