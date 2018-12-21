@@ -74,28 +74,28 @@ public:
 	afx_msg void OnBnClickedButtonSenddata();
 	CComboBox Idc_Combo_ComSel;
 
-	// 服务器指令
-	unsigned int uint_ServerMsg_Cmd;
-	CString str_ServerMsg_DataPort;
-	unsigned int uint_ServerMsg_FileLength;
-	unsigned int uint_ServerMsg_FileHashCode;
-	CString str_ServerMsg_FileMatchResult;
-	CString str_ServerMsg_Data;
-	CString str_ServerMsg_Test;
-	CString str_ServerMsg_Key;
-	CString str_ServerMsg_Type;
-	CString str_ServerMsg_State;
-	CString str_ServerMsg_ExpComOperation;
-	unsigned int uint_ServerMsg_ExpComBitRate;
-	unsigned int uint_ServerMsg_ExpComDataBits;
-	unsigned int uint_ServerMsg_ExpComParityCheck;
-	unsigned int uint_ServerMsg_ExpComStopBit;
-	unsigned int uint_ServerMsg_ExpComSendDataLength;
-	CString str_ServerMsg_ExpComSendData;
-	unsigned int uint_ServerMsg_Ps2MouseSendDataLength;
-	CString str_ServerMsg_Ps2MouseSendData;
-	unsigned int uint_ServerMsg_Ps2KeyboardSendDataLength;
-	CString str_ServerMsg_Ps2KeyboardSendData;
+    // 服务器指令
+    unsigned int uint_ServerMsg_Cmd;
+    CString str_ServerMsg_DataPort;
+    unsigned int uint_ServerMsg_FileLength;
+    unsigned int uint_ServerMsg_FileHashCode;
+    CString str_ServerMsg_FileMatchResult;
+    CString str_ServerMsg_Data;
+    CString str_ServerMsg_Test;
+    CString str_ServerMsg_Key;
+    CString str_ServerMsg_Type;
+    CString str_ServerMsg_State;
+    CString str_ServerMsg_ExpComOperation;
+    unsigned int uint_ServerMsg_ExpComBitRate;
+    unsigned int uint_ServerMsg_ExpComDataBits;
+    unsigned int uint_ServerMsg_ExpComParityCheck;
+    unsigned int uint_ServerMsg_ExpComStopBit;
+    unsigned int uint_ServerMsg_ExpComSendDataLength;
+    CString str_ServerMsg_ExpComSendData;
+    unsigned int uint_ServerMsg_Ps2MouseSendDataLength;
+    CString str_ServerMsg_Ps2MouseSendData;
+    unsigned int uint_ServerMsg_Ps2KeyboardSendDataLength;
+    CString str_ServerMsg_Ps2KeyboardSendData;
 
     long last_check_time = 0;
 
@@ -105,6 +105,7 @@ public:
 
 
     // 日志文件
+    CString GetTime();
     void WriteLogFile(int int_NewLog, CString str_Log );
     CFile f_LogFile;
 	void LogDisplay(int int_NewLog, CString str_Log );
@@ -134,13 +135,17 @@ public:
 	void FpgaUpdateThreadStart();
 
 
-    // 串口
-   	CPubSub cpubsub_MasterCom;
-	BOOL ExpComOpen(unsigned int uint_ExpComBautrate, BYTE ExpComDataBits, BYTE ExpComParityBit, BYTE ExpComStopBit);
-	BOOL ExpComClose();
-	void ExpComWrite(BYTE *byte_ExpComWriteBuffer,unsigned int uint_ExpComWriteLength);
-	unsigned int ExpComRead(BYTE *byte_ExpComReadBuffer,unsigned int uint_ExpComReadLength);
+    // 主控串口
+    CPubSub cpubsub_MasterCom;
     BOOL AutoOpenMasterCom();
+
+    // 实验串口
+    BOOL ExpComOpen(int int_ExpComBautrate, BYTE ExpComDataBits, BYTE ExpComParityBit, BYTE ExpComStopBit);
+    BOOL ExpComClose();
+    BOOL bool_ExpComStatus;
+    void ExpComWrite(BYTE *byte_ExpComWriteBuffer, unsigned int uint_ExpComWriteLength);
+    unsigned int ExpComRead(BYTE *byte_ExpComReadBuffer, unsigned int uint_ExpComReadLength);
+
 
     // 数据采集
     CString str_FpgaSampleData0;
@@ -159,7 +164,6 @@ public:
 	unsigned __int64 uint64_HWTPattern;
 	BOOL bool_TimeridDataSampleStatus;
 	BOOL bool_TimeridTestDataSampleStatus;
-	BOOL bool_TimeridExpComRxStatus;
 
 	CButton Idc_Button_ServerConnect;
 	CButton Idc_Button_ServerDisconnect;
@@ -185,13 +189,14 @@ public:
     CProgressCtrl Idc_Progress_FpgaUpdateProgress;
     CButton Idc_Radio_MasterFpgaSelect;
     CButton Idc_Radio_ExpFpgaSelect;
+    CButton Idc_Radio_ExpFpgaUartTest;
     CButton Idc_Radio_SpiFlashSelect;
     CButton Idc_Radio_SpiFlashStatusSelect;
     CButton Idc_Radio_SpiFlashChipEraseSelect;
     CButton Idc_Radio_JtagIRSelect;
     CButton Idc_Radio_JtagDRSelect;
     CButton Idc_Radio_FPGAUpdateJtagSelect;
-    CButton Idc_Check_FPGAUpdateJtagTestEn;
+    CButton Idc_Check_FPGAUpdateAutoTestEn;
     CButton Idc_Radio_FPGAUpdateSpiFlashSelect;
     CButton Idc_Radio_FT232HSelect;
 
@@ -202,5 +207,5 @@ public:
 	afx_msg void OnBnClickedButtonHardwareteststart();
 	afx_msg void OnBnClickedButtonHardwareteststop();
 	afx_msg void OnBnClickedButtonFpgaupdatestop();
-    afx_msg void OnEnChangeEditLogdisplay();
+    //afx_msg void OnEnChangeEditLogdisplay();
 };

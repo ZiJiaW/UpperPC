@@ -121,7 +121,7 @@ void ConnectMetadata::onMessage(websocketpp::connection_hdl hdl, client::message
                 // 设置fpga升级模式为在线模式
                 pDlg->int_FpgaUpdateMode = FPGA_UPDATE_MODE_ONLINE;
                 // 选择jtag加载模式
-                pDlg->Idc_Check_FPGAUpdateJtagTestEn.SetCheck(0);
+                pDlg->Idc_Check_FPGAUpdateAutoTestEn.SetCheck(0);
                 pDlg->Idc_Radio_FPGAUpdateJtagSelect.SetCheck(1);
                 pDlg->Idc_Radio_FPGAUpdateSpiFlashSelect.SetCheck(0);
                 // 启动烧写线程
@@ -135,7 +135,7 @@ void ConnectMetadata::onMessage(websocketpp::connection_hdl hdl, client::message
             m_fileRcvEnable = false;// 文件接收使能关闭
         }
     }
-    else// 不在传输文件
+    else if(!m_fileRcvEnable)// 不在传输文件
     {
         if (parseCmd(serverMessage))
         {
@@ -259,7 +259,7 @@ void ConnectMetadata::onMessage(websocketpp::connection_hdl hdl, client::message
                 // 关闭相关定时器
                 pDlg->KillTimer(TIMERID_DATA_SAMPLE);
                 pDlg->KillTimer(TIMERID_TEST_DATA_SAMPLE);
-                pDlg->KillTimer(TIMERID_EXPCOMRX);
+                pDlg->KillTimer(TIMERID_FILEREV);
                 // 更新工作模式为实验模式
                 pDlg->str_WorkMode = _T("ExperimentMode");
                 // 更新上位机状态
@@ -300,8 +300,7 @@ void ConnectMetadata::onMessage(websocketpp::connection_hdl hdl, client::message
                     {
                         // 发送实验串口打开成功指令
                         pDlg->wsEndpoint->send("<COMStatus>OpenSuccessful</COMStatus>");
-                        // 启动实验串口接收定时器
-                        pDlg->SetTimer(TIMERID_EXPCOMRX, TIMERID_EXPCOMRX_TIME, NULL);
+                        pDlg->bool_ExpComStatus = 1;
                         // 日志：“实验串口打开成功：”
                         pDlg->WriteLogFile(1, _T("实验串口打开成功!"));
                     }
@@ -315,14 +314,13 @@ void ConnectMetadata::onMessage(websocketpp::connection_hdl hdl, client::message
                 }
                 else if (pDlg->str_ServerMsg_ExpComOperation == _T("Close"))
                 {
-                    // 关闭实验串口接收定时器
-                    pDlg->KillTimer(TIMERID_EXPCOMRX);
                     // 日志：“关闭实验串口：”
                     pDlg->WriteLogFile(1, _T("关闭实验串口："));
                     if (pDlg->ExpComClose())
                     {
                         // 发送实验串口关闭成功指令
                         pDlg->wsEndpoint->send("<COMStatus>CloseSuccessful</COMStatus>");
+                        pDlg->bool_ExpComStatus = 0;
                         // 日志：“实验串口关闭成功。”
                         pDlg->WriteLogFile(1, _T("实验串口关闭成功。"));
                     }
@@ -339,75 +337,69 @@ void ConnectMetadata::onMessage(websocketpp::connection_hdl hdl, client::message
             case SERVERCMD_EXPCOMSENDDATA:
             {
                 // 数据格式要求以字节为单位，十六进制，小于0x10的，高位填0，如0x0f
-                int int_ExpComSendDataCount = 0;
-                CString srt_DataTmp;
-                unsigned int uint_ExpComSendDataLength = 0;
-                CString str_ExpComSendData;
+                CString str_DataTmp;
                 BYTE byte_ExpComWriteBuf[EXPCOMBUFSIZE];
 
-                uint_ExpComSendDataLength = pDlg->uint_ServerMsg_ExpComSendDataLength;
-                str_ExpComSendData = pDlg->str_ServerMsg_ExpComSendData;
 
-                // 日志：“实验串口发送数据：”
-                pDlg->WriteLogFile(1, _T("实验串口发送数据："));
-                pDlg->WriteLogFile(0, str_ExpComSendData);
-
-                // 把数据存入串口发送buffer
-                for (int_ExpComSendDataCount = 0; int_ExpComSendDataCount < uint_ExpComSendDataLength; int_ExpComSendDataCount++)
+                if (pDlg->uint_ServerMsg_ExpComSendDataLength > 0)
                 {
-                    // 从左到右截取1字节数据
-                    srt_DataTmp = str_ExpComSendData.Mid(int_ExpComSendDataCount * 2, 2);
-                    byte_ExpComWriteBuf[int_ExpComSendDataCount] = (byte)(_tcstoui64(srt_DataTmp, 0, 16) & 0xff);
+                    // 把数据存入串口发送buffer
+                    for (int i = 0; i < pDlg->uint_ServerMsg_ExpComSendDataLength; i++)
+                    {
+                        // 从左到右截取1字节数据
+                        str_DataTmp = pDlg->str_ServerMsg_ExpComSendData.Mid(i * 2, 2);
+                        byte_ExpComWriteBuf[i] = (byte)(_tcstoui64(str_DataTmp, 0, 16) & 0xff);
+                    }
+
+                    // 串口发送数据
+                    pDlg->ExpComWrite(byte_ExpComWriteBuf, pDlg->uint_ServerMsg_ExpComSendDataLength);
+
+                    // 日志
+                    pDlg->WriteLogFile(1, _T("实验串口发送数据：") + pDlg->str_ServerMsg_ExpComSendData);
                 }
-                // 串口发送数据
-                pDlg->ExpComWrite(byte_ExpComWriteBuf, uint_ExpComSendDataLength);
+
                 break;
             }
             case SERVERCMD_PS2SENDDATA:
             {
-                int int_Ps2SendDataCount = 0;
+                // 数据格式要求以字节为单位，十六进制，小于0x10的，高位填0，如0x0f
                 CString str_DataTmp;
-                unsigned __int64 uint64_DataTmp;
-                unsigned int uint_Ps2SendDataLength = 0;
-                CString str_Ps2SendData;
+                BYTE byte_Ps2WriteBuf[256];
 
-                uint_Ps2SendDataLength = pDlg->uint_ServerMsg_Ps2MouseSendDataLength;
-                str_Ps2SendData = pDlg->str_ServerMsg_Ps2MouseSendData;
-
-                if (uint_Ps2SendDataLength > 0)
+                if (pDlg->uint_ServerMsg_Ps2MouseSendDataLength > 0)
                 {
-                    // 日志：“PS2鼠标发送数据：”
-                    pDlg->WriteLogFile(1, _T("PS2鼠标发送数据："));
-                    pDlg->WriteLogFile(0, str_Ps2SendData);
-
-                    // 把鼠标数据发送给实验fpga的主机端
-                    for (int_Ps2SendDataCount = 0; int_Ps2SendDataCount < uint_Ps2SendDataLength; int_Ps2SendDataCount++)
+                    // 把数据存入PS2发送buffer
+                    for (int i = 0; i < pDlg->uint_ServerMsg_Ps2MouseSendDataLength; i++)
                     {
                         // 从左到右截取1字节数据
-                        str_DataTmp = str_Ps2SendData.Mid(int_Ps2SendDataCount * 2, 2);
-                        uint64_DataTmp = _tcstoui64(str_DataTmp, 0, 16) & 0xff;
-                        pDlg->FpgaWrite(0, 0x30, ((uint64_DataTmp | 0x0000000000000100) << 32));
+                        str_DataTmp = pDlg->str_ServerMsg_Ps2MouseSendData.Mid(i * 2, 2);
+                        byte_Ps2WriteBuf[i] = (byte)(_tcstoui64(str_DataTmp, 0, 16) & 0xff);
                     }
-                }
-
-                uint_Ps2SendDataLength = pDlg->uint_ServerMsg_Ps2KeyboardSendDataLength;
-                str_Ps2SendData = pDlg->str_ServerMsg_Ps2KeyboardSendData;
-
-                if (uint_Ps2SendDataLength > 0)
-                {
-                    // 日志：“PS2键盘发送数据：”
-                    pDlg->WriteLogFile(1, _T("PS2键盘发送数据："));
-                    pDlg->WriteLogFile(0, str_Ps2SendData);
 
                     // 把鼠标数据发送给实验fpga的主机端
-                    for (int_Ps2SendDataCount = 0; int_Ps2SendDataCount < uint_Ps2SendDataLength; int_Ps2SendDataCount++)
+                    pDlg->FpgaBlockWrite(0x31, byte_Ps2WriteBuf, 0x1, pDlg->uint_ServerMsg_Ps2MouseSendDataLength);
+
+                    // 日志
+                    pDlg->WriteLogFile(1, _T("PS2鼠标发送数据：") + pDlg->str_ServerMsg_Ps2MouseSendData);
+                }
+
+                if (pDlg->uint_ServerMsg_Ps2KeyboardSendDataLength > 0)
+                {
+                    // 把数据存入PS2发送buffer
+                    for (int i = 0; i < pDlg->uint_ServerMsg_Ps2KeyboardSendDataLength; i++)
                     {
                         // 从左到右截取1字节数据
-                        str_DataTmp = str_Ps2SendData.Mid(int_Ps2SendDataCount * 2, 2);
-                        uint64_DataTmp = _tcstoui64(str_DataTmp, 0, 16) & 0xff;
-                        pDlg->FpgaWrite(0, 0x30, (uint64_DataTmp | 0x0000000000000100));
+                        str_DataTmp = pDlg->str_ServerMsg_Ps2KeyboardSendData.Mid(i * 2, 2);
+                        byte_Ps2WriteBuf[i] = (byte)(_tcstoui64(str_DataTmp, 0, 16) & 0xff);
                     }
+
+                    // 把键盘数据发送给实验fpga的主机端
+                    pDlg->FpgaBlockWrite(0x30, byte_Ps2WriteBuf, 0x1, pDlg->uint_ServerMsg_Ps2KeyboardSendDataLength);
+
+                    // 日志
+                    pDlg->WriteLogFile(1, _T("PS2键盘发送数据：") + pDlg->str_ServerMsg_Ps2KeyboardSendData);
                 }
+
                 break;
             }
             default:

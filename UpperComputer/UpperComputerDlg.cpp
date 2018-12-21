@@ -81,13 +81,14 @@ void CUpperComputerDlg::DoDataExchange(CDataExchange* pDX)
     DDX_Control(pDX, IDC_PROGRESS_FpgaUpdateProgress, Idc_Progress_FpgaUpdateProgress);
 	DDX_Control(pDX, IDC_RADIO_MasterFpgaSelect, Idc_Radio_MasterFpgaSelect);
 	DDX_Control(pDX, IDC_RADIO_ExpFpgaSelect, Idc_Radio_ExpFpgaSelect);
-	DDX_Control(pDX, IDC_RADIO_SpiFlashSelect, Idc_Radio_SpiFlashSelect);
+    DDX_Control(pDX, IDC_RADIO_ExpFpgaUartTest, Idc_Radio_ExpFpgaUartTest);
+    DDX_Control(pDX, IDC_RADIO_SpiFlashSelect, Idc_Radio_SpiFlashSelect);
 	DDX_Control(pDX, IDC_RADIO_SpiFlashStatusSelect, Idc_Radio_SpiFlashStatusSelect);
 	DDX_Control(pDX, IDC_RADIO_SpiFlashChipEraseSelect, Idc_Radio_SpiFlashChipEraseSelect);
 	DDX_Control(pDX, IDC_RADIO_JtagIRSelect, Idc_Radio_JtagIRSelect);
 	DDX_Control(pDX, IDC_RADIO_JtagDRSelect, Idc_Radio_JtagDRSelect);
 	DDX_Control(pDX, IDC_RADIO_FPGAUpdateJtagSelect, Idc_Radio_FPGAUpdateJtagSelect);
-    DDX_Control(pDX, IDC_CHECK_FPGAUpdateJtagTestEn, Idc_Check_FPGAUpdateJtagTestEn);
+    DDX_Control(pDX, IDC_CHECK_FPGAUpdateAutoTestEn, Idc_Check_FPGAUpdateAutoTestEn);
 	DDX_Control(pDX, IDC_RADIO_FPGAUpdateSpiFlashSelect, Idc_Radio_FPGAUpdateSpiFlashSelect);
 	DDX_Control(pDX, IDC_RADIO_FT232HSelect, Idc_Radio_FT232HSelect);
     DDX_Control(pDX, IDC_COMBO_HardwareTestSel, Idc_Combo_HardwareTestSel);
@@ -109,7 +110,6 @@ BEGIN_MESSAGE_MAP(CUpperComputerDlg, CDialogEx)
 	ON_BN_CLICKED(IDC_BUTTON_Disconnect, &CUpperComputerDlg::OnBnClickedButtonDisconnect)
 
 	ON_WM_TIMER()
-    ON_WM_CLOSE()
 
     ON_BN_CLICKED(IDC_BUTTON_ComOpen, &CUpperComputerDlg::OnBnClickedButtonComopen)
     ON_BN_CLICKED(IDC_BUTTON_ComClose, &CUpperComputerDlg::OnBnClickedButtonComclose)
@@ -120,7 +120,6 @@ BEGIN_MESSAGE_MAP(CUpperComputerDlg, CDialogEx)
 	ON_BN_CLICKED(IDC_BUTTON_HardwareTestStart, &CUpperComputerDlg::OnBnClickedButtonHardwareteststart)
 	ON_BN_CLICKED(IDC_BUTTON_HardwareTestStop, &CUpperComputerDlg::OnBnClickedButtonHardwareteststop)
 	ON_BN_CLICKED(IDC_BUTTON_FpgaUpdateStop, &CUpperComputerDlg::OnBnClickedButtonFpgaupdatestop)
-    ON_EN_CHANGE(IDC_EDIT_LogDisplay, &CUpperComputerDlg::OnEnChangeEditLogdisplay)
 END_MESSAGE_MAP()
 
 
@@ -193,7 +192,6 @@ BOOL CUpperComputerDlg::OnInitDialog()
         f_ServerInf.ReadString( str_ServerStatusPort );
         // 读取本机ID号
         f_ServerInf.ReadString( str_UpperComputerID );
-
         // 关闭文件
         f_ServerInf.Close();
         // 显示服务器IP地址和端口号
@@ -219,6 +217,9 @@ BOOL CUpperComputerDlg::OnInitDialog()
 	Idc_Combo_ComSel.SetCurSel(0);    
 	// 串口关闭按钮不可用
 	Idc_Button_ComClose.EnableWindow(FALSE);
+
+    // 实验串口状态
+    bool_ExpComStatus = 0;
 
 	// 硬件自检功能选择
 	Idc_Combo_HardwareTestSel.AddString(_T("JTAG接口"));
@@ -364,6 +365,58 @@ void CUpperComputerDlg::OnClose()
 //
 //}
 
+// 实验fpga 串口测试线程
+UINT _ExpFpgaUartTestThread(LPVOID lparam)
+{
+    CString str_FpgaReadData0;
+    CString str_FpgaReadData1;
+    CString str_FpgaRegData;
+
+
+    CUpperComputerDlg* pDlg = (CUpperComputerDlg*)lparam;//取得主窗口指针
+
+                                                         // 实验串口控制模块清零
+    pDlg->FpgaWrite(0, 0x60, 0x0);
+    // 配置实验串口
+    pDlg->ExpComOpen(1000000, 8, 0, 0);
+
+    // 获取测试数据
+    pDlg->Idc_Edit_FpgaRegData.GetWindowText(str_FpgaRegData);
+    str_FpgaRegData = str_FpgaRegData.Right(16);
+
+    for (;;)
+    {
+        // 实验fpga 串口测试
+        if (pDlg->Idc_Radio_ExpFpgaUartTest.GetCheck())
+        {
+            // 写入测试数据
+            pDlg->ExpFpgaWrite(0, 1, _tcstoui64(str_FpgaRegData, 0, 16));
+
+            // 切换地址，先读0地址，再读1地址
+            str_FpgaReadData0 = pDlg->ExpFpgaRead(0);
+            str_FpgaReadData1 = pDlg->ExpFpgaRead(1);
+
+            pDlg->Idc_Edit_FpgaRegData.SetWindowText(str_FpgaReadData1);
+            if (str_FpgaReadData1 != str_FpgaRegData)
+            {
+                pDlg->WriteLogFile(1, _T("实验fpga 串口测试失败！\r\nstr_FpgaRegData = ") + str_FpgaRegData + _T("str_FpgaReadData0 = ") + str_FpgaReadData0 + _T("str_FpgaReadData1 = ") + str_FpgaReadData1);
+
+            }
+
+
+        }
+        else
+        {
+
+            break;
+
+        }
+    }
+
+    return 1;
+
+}
+
 // FPGA加载线程
 UINT _FpgaUpdateThread(LPVOID lparam)
 {  	
@@ -373,7 +426,7 @@ UINT _FpgaUpdateThread(LPVOID lparam)
 	BYTE byte_FpgaUpdateFileReadBuf[64*1024];
     unsigned int uint_FpgaUpdateFileReadLen;
 
- 	//BYTE byte_FpgaReadBuf[64*1024];
+ 	BYTE byte_FpgaReadBuf[64*1024];
  	BYTE byte_FpgaWriteBuf[64*1024];
     unsigned __int64 uint64_SpiFlashPageAddr;
     int int_SpiFlashStatusData;
@@ -419,8 +472,7 @@ UINT _FpgaUpdateThread(LPVOID lparam)
 			pDlg->Idc_Button_FPGAUpdateFileSelect.EnableWindow(TRUE);
 			// 启动按钮可用
 			pDlg->Idc_Button_FpgaUpdateStart.EnableWindow(TRUE);
-			pDlg->WriteLogFile(1,_T("FPGA 升级："));
-			pDlg->WriteLogFile(0,_T("SPI-Flash 擦除失败！"));
+			pDlg->WriteLogFile(1,_T("FPGA 升级：\r\nSPI-Flash 擦除失败！"));
 
 			return 0;
 
@@ -443,8 +495,7 @@ UINT _FpgaUpdateThread(LPVOID lparam)
 	// 打开加载bit文件
 	if(!f_FpgaUpdateFile.Open(str_FpgaUpdateFilePath, CFile::modeRead | CFile::typeBinary))
 	{
-		pDlg->WriteLogFile(1,_T("FPGA 升级："));
-		pDlg->WriteLogFile(0,_T("加载文件打开失败！"));
+		pDlg->WriteLogFile(1,_T("FPGA 升级：\r\n加载文件打开失败！"));
 		return 0;
 	}
 
@@ -457,18 +508,17 @@ UINT _FpgaUpdateThread(LPVOID lparam)
 	pDlg->Idc_Progress_FpgaUpdateProgress.SetPos(0); 
 
     // 开始烧写文件
-	pDlg->WriteLogFile(1,_T("FPGA 升级："));
-	pDlg->WriteLogFile(0,_T("正在加载文件。。。"));
+	pDlg->WriteLogFile(1,_T("FPGA 升级：\r\n正在加载文件。。。"));
     uint64_SpiFlashPageAddr = FPGA_UPDATE_START_ADDR;
 	int_SpiFlashStatusData = 0;
 
     if (pDlg->Idc_Radio_FPGAUpdateSpiFlashSelect.GetCheck())
 	{
 		// 指向文件开头
-		f_FpgaUpdateFile.Seek(BIT_START_ADDR_XC6SLX16, CFile::begin);
+		f_FpgaUpdateFile.Seek(BIT_START_ADDR_XC6SLX16, CFile::begin);  
 
 		for(;;)
-		{
+		{    
 			// 如果busy位有效，则烧写失败
 			if((int_SpiFlashStatusData & 0x0001) == 0x0001)
 			{
@@ -479,8 +529,7 @@ UINT _FpgaUpdateThread(LPVOID lparam)
 				pDlg->Idc_Button_FPGAUpdateFileSelect.EnableWindow(TRUE);
 				// 启动按钮可用
 				pDlg->Idc_Button_FpgaUpdateStart.EnableWindow(TRUE);
-				pDlg->WriteLogFile(1,_T("FPGA 升级："));
-				pDlg->WriteLogFile(0,_T("SPI-Flash 烧写失败！"));
+				pDlg->WriteLogFile(1,_T("FPGA 升级：\r\nSPI-Flash 烧写失败！"));
 			
 				return 0;
 
@@ -494,12 +543,17 @@ UINT _FpgaUpdateThread(LPVOID lparam)
 				{
 					break;
 				}
+			
+
 				//烧写文件内容
 				pDlg->SpiFlashPageProgram(uint64_SpiFlashPageAddr, byte_FpgaUpdateFileReadBuf, uint_FpgaUpdateFileReadLen);
+
 				// 更新烧写进度条
 				uint64_SpiFlashPageAddr += uint_FpgaUpdateFileReadLen;
 				pDlg->Idc_Progress_FpgaUpdateProgress.SetPos(uint64_SpiFlashPageAddr - FPGA_UPDATE_START_ADDR); 
+
 			}
+
 			// 等待页面烧写完成
 			for (i = 0; i < 3; i++)
 			{
@@ -526,8 +580,7 @@ UINT _FpgaUpdateThread(LPVOID lparam)
 		f_FpgaUpdateFile.Seek(BIT_START_ADDR_XC6SLX16, CFile::begin);  
 
 		// 开始校验
-		pDlg->WriteLogFile(1,_T("FPGA 升级："));
-		pDlg->WriteLogFile(0,_T("正在校验。。。"));
+		pDlg->WriteLogFile(1,_T("FPGA 升级：\r\nSPI-Flash 正在校验。。。"));
 		uint64_SpiFlashPageAddr = FPGA_UPDATE_START_ADDR;
 
 		// 拉高spi-flash的片选信号，终止当前操作
@@ -547,10 +600,13 @@ UINT _FpgaUpdateThread(LPVOID lparam)
 		{    
 		 
 			//一次读取4k字节的文件内容
-			uint_FpgaUpdateFileReadLen = f_FpgaUpdateFile.Read(byte_FpgaUpdateFileReadBuf, 1024);
+			uint_FpgaUpdateFileReadLen = f_FpgaUpdateFile.Read(byte_FpgaUpdateFileReadBuf, 64);
 			if(uint_FpgaUpdateFileReadLen == 0)
 			{
 				pDlg->int_FpgaUpdateStatus = 1;
+				pDlg->WriteLogFile(1,_T("SPI-Flash 加载成功！"));
+				//关闭要烧写的文件
+				f_FpgaUpdateFile.Close();
 				break;
 			}
 
@@ -566,12 +622,13 @@ UINT _FpgaUpdateThread(LPVOID lparam)
 			pDlg->FpgaBlockWrite(0x41,byte_FpgaWriteBuf,2,uint_FpgaUpdateFileReadLen * 2);
 
 			// 从fpga读取数据
-			//pDlg->FpgaBlockRead(0x42,byte_FpgaReadBuf,1,uint_FpgaUpdateFileReadLen);
+			pDlg->FpgaBlockRead(0x42,byte_FpgaReadBuf,1,uint_FpgaUpdateFileReadLen);
 			for (i = 0; i < uint_FpgaUpdateFileReadLen; i++)
 			{
-				str_FpgaReadData = pDlg->FpgaRead(0x42);
+				//str_FpgaReadData = pDlg->FpgaRead(0x42);
 	
-				if (((BYTE)(_tcstoul(str_FpgaReadData.Mid(14, 2), 0, 16))) != byte_FpgaUpdateFileReadBuf[i])
+				//if (((BYTE)(_tcstoul(str_FpgaReadData.Mid(14, 2), 0, 16))) != byte_FpgaUpdateFileReadBuf[i])
+				if (byte_FpgaReadBuf[i] != byte_FpgaUpdateFileReadBuf[i])
 				{
 					// 拉高spi-flash的片选信号，终止当前操作
 					pDlg->FpgaWrite(0,0x40,0x1);
@@ -582,8 +639,7 @@ UINT _FpgaUpdateThread(LPVOID lparam)
 					pDlg->Idc_Button_FPGAUpdateFileSelect.EnableWindow(TRUE);
 					// 启动按钮可用
 					pDlg->Idc_Button_FpgaUpdateStart.EnableWindow(TRUE);
-					pDlg->WriteLogFile(1,_T("FPGA 升级："));
-					pDlg->WriteLogFile(0,_T("校验失败！"));
+					pDlg->WriteLogFile(1,_T("FPGA 升级：\r\nSPI-Flash 校验失败！"));
 					return 0;
 				}
 			}
@@ -597,212 +653,211 @@ UINT _FpgaUpdateThread(LPVOID lparam)
 
 		// 拉高spi-flash的片选信号
 		pDlg->FpgaWrite(0,0x40,0x1);
+
 	}
 
 	// jtag加载模式
     else if (pDlg->Idc_Radio_FPGAUpdateJtagSelect.GetCheck())
-    {
+	{
 
 
-        f_FpgaUpdateFile.GetFileTitle();
+		f_FpgaUpdateFile.GetFileTitle();
 
-        for (;;)
-        {
-            // 启动jtag加载超时定时器
-            pDlg->SetTimer(TIMERID_JTAG_TIMEOUT, TIMERID_JTAG_TIMEOUT_TIME, NULL);
+		do
+		{
+			// 启动jtag加载超时定时器
+			pDlg->SetTimer( TIMERID_JTAG_TIMEOUT, TIMERID_JTAG_TIMEOUT_TIME, NULL );
 
-            pDlg->WriteLogFile(1, _T("FPGA 升级："));
-            pDlg->WriteLogFile(0, _T("开始JTAG加载。。。"));
+			pDlg->WriteLogFile(1,_T("FPGA 升级：\r\n开始JTAG加载。。。"));
 
-            // 烧写进度归零
-            pDlg->Idc_Progress_FpgaUpdateProgress.SetPos(0);
-            // 指向文件开头
-            f_FpgaUpdateFile.Seek(BIT_START_ADDR_XC6SLX100, CFile::begin);
+			// 烧写进度归零
+			pDlg->Idc_Progress_FpgaUpdateProgress.SetPos(0); 
+			// 指向文件开头
+			f_FpgaUpdateFile.Seek(BIT_START_ADDR_XC6SLX100, CFile::begin);  
 
-            // 开始烧写文件
-            uint64_SpiFlashPageAddr = FPGA_UPDATE_START_ADDR;
-            int_SpiFlashStatusData = 0;
-
-
-            // jtag 初始化
-            pDlg->JtagStateReset();
-            pDlg->JtagStateIdle();
-
-            //Loading device with 'bypass' instruction.
-            pDlg->JtagSIR(6, 0x3f);
-            // Loading device with a `jprogram` instruction. 
-            pDlg->JtagSIR(6, 0xb);
-            // Loading device with a `cfg_in` instruction. 
-            pDlg->JtagSIR(6, 0x5);
-            Sleep(10);
-            pDlg->JtagStateReset();
-            // Loading device with a `cfg_in` instruction. 
-            pDlg->JtagSIR(6, 0x5);
-            pDlg->JtagSDR(32, 0x0);
-            pDlg->JtagSIR(6, 0x5);
+			// 开始烧写文件
+			uint64_SpiFlashPageAddr = FPGA_UPDATE_START_ADDR;
+			int_SpiFlashStatusData = 0;
 
 
-            // tap状态机从“RUN-TEST/IDLE” 状态进入“SHIFT-DR”状态，TMS输出“001”
-            pDlg->FpgaWrite(0, 0x50, 0x3);
-            pDlg->FpgaWrite(0, 0x51, 0x0000000100000000);
+			// jtag 初始化
+			pDlg->JtagStateReset();
+			pDlg->JtagStateIdle();
+		
+			//Loading device with 'bypass' instruction.
+			pDlg->JtagSIR(6,0x3f);
+			// Loading device with a `jprogram` instruction. 
+			pDlg->JtagSIR(6,0xb);
+			// Loading device with a `cfg_in` instruction. 
+			pDlg->JtagSIR(6,0x5);
+			Sleep(10);
+			pDlg->JtagStateReset();
+			// Loading device with a `cfg_in` instruction. 
+			pDlg->JtagSIR(6,0x5);
+			pDlg->JtagSDR(32,0x0);
+			pDlg->JtagSIR(6,0x5);
 
 
-            // 写入前导数据, msb first
-            pDlg->FpgaWrite(0, 0x50, 0x100000020);
-            pDlg->FpgaWrite(0, 0x51, 0x30a10008);
-            pDlg->FpgaWrite(0, 0x51, 0x0);
+			// tap状态机从“RUN-TEST/IDLE” 状态进入“SHIFT-DR”状态，TMS输出“001”
+			pDlg->FpgaWrite(0, 0x50, 0x3);
+			pDlg->FpgaWrite(0, 0x51, 0x0000000100000000);
 
 
-            pDlg->FpgaWrite(0, 0x700, 0x1);
-            pDlg->FpgaWrite(0, 0x700, 0x2);
+			// 写入前导数据, msb first
+			pDlg->FpgaWrite(0, 0x50, 0x100000020);
+			pDlg->FpgaWrite(0, 0x51, 0x30a10008);
+			pDlg->FpgaWrite(0, 0x51, 0x0);
 
 
-            // 写入文件数据
-            for (;;)
-            {
-
-                //读取文件内容
-                uint_FpgaUpdateFileReadLen = f_FpgaUpdateFile.Read(byte_FpgaUpdateFileReadBuf, JTAG_BLOCK_WRITE_LENGTH);
-
-                if (f_FpgaUpdateFile.GetPosition() == uint_FpgaUpdateFileLength)
-                {
-                    //烧写文件内容
-                    pDlg->FpgaBlockWrite(0x51, byte_FpgaUpdateFileReadBuf, 4, uint_FpgaUpdateFileReadLen - 4);
-                    // 最后4-byte中的最后1-bit，tms要输出1
-                    pDlg->FpgaWrite(0, 0x51, 0x8000000000000000 | ((byte_FpgaUpdateFileReadBuf[uint_FpgaUpdateFileReadLen - 4]) << 24) | ((byte_FpgaUpdateFileReadBuf[uint_FpgaUpdateFileReadLen - 3]) << 16) | ((byte_FpgaUpdateFileReadBuf[uint_FpgaUpdateFileReadLen - 2]) << 8) | (byte_FpgaUpdateFileReadBuf[uint_FpgaUpdateFileReadLen - 1]));
-
-                    break;
-                }
-                else
-                {
-                    //烧写文件内容
-                    pDlg->FpgaBlockWrite(0x51, byte_FpgaUpdateFileReadBuf, 4, uint_FpgaUpdateFileReadLen);
-
-                }
+			pDlg->FpgaWrite(0, 0x700, 0x1);
+			pDlg->FpgaWrite(0, 0x700, 0x2);
 
 
-                // 更新烧写进度条
-                uint64_SpiFlashPageAddr += uint_FpgaUpdateFileReadLen;
-                pDlg->Idc_Progress_FpgaUpdateProgress.SetPos(uint64_SpiFlashPageAddr);
+			// 写入文件数据
+			for(;;)
+			{    
+
+				//读取文件内容
+				uint_FpgaUpdateFileReadLen = f_FpgaUpdateFile.Read(byte_FpgaUpdateFileReadBuf, JTAG_BLOCK_WRITE_LENGTH);
+
+				if(f_FpgaUpdateFile.GetPosition() == uint_FpgaUpdateFileLength)
+				{
+					//烧写文件内容
+					pDlg->FpgaBlockWrite(0x51, byte_FpgaUpdateFileReadBuf, 4, uint_FpgaUpdateFileReadLen - 4);
+					// 最后4-byte中的最后1-bit，tms要输出1
+					pDlg->FpgaWrite(0, 0x51, 0x8000000000000000 | ((byte_FpgaUpdateFileReadBuf[uint_FpgaUpdateFileReadLen - 4]) << 24) | ((byte_FpgaUpdateFileReadBuf[uint_FpgaUpdateFileReadLen - 3]) << 16) | ((byte_FpgaUpdateFileReadBuf[uint_FpgaUpdateFileReadLen - 2]) << 8) | (byte_FpgaUpdateFileReadBuf[uint_FpgaUpdateFileReadLen - 1]));
+
+					break;
+				}
+				else
+				{
+					//烧写文件内容
+					pDlg->FpgaBlockWrite(0x51, byte_FpgaUpdateFileReadBuf, 4, uint_FpgaUpdateFileReadLen);
+				
+				}
 
 
-            }
-            pDlg->FpgaWrite(0, 0x700, 0x0);
-
-            // tap状态机进入“RUN-TEST/IDLE”状态，TMS输出“01”
-            pDlg->FpgaWrite(0, 0x50, 0x2);
-            pDlg->FpgaWrite(0, 0x51, 0x0000000100000000);
-
-            // Loading device with a `jstart` instruction. 
-            pDlg->JtagSIR(6, 0xc);
-            Sleep(1);
-            //Loading device with 'bypass' instruction.
-            pDlg->JtagSIR(6, 0x3f);
-            //Loading device with 'bypass' instruction.
-            pDlg->JtagSIR(6, 0x3f);
-
-            // Loading device with a `jstart` instruction. 
-            pDlg->JtagSIR(6, 0xc);
-            Sleep(1);
-            pDlg->JtagSIR(6, 0x3f);
-            pDlg->JtagSDR(1, 0x0);
-
-            Sleep(500);
-            // 从主控fpga读取实验fpga加载完成标志位
-            str_FpgaReadData = pDlg->FpgaRead(0x10);
-            unsigned __int64 uint64_FpgaReadData = _tcstoui64(str_FpgaReadData, 0, 16);
-
-            if (pDlg->Idc_Check_FPGAUpdateJtagTestEn.GetCheck())
-            {
-                // 关闭jtag加载超时定时器
-                pDlg->KillTimer(TIMERID_JTAG_TIMEOUT);
-
-                // 实验fpga加载成功
-                if ((uint64_FpgaReadData & 0x0000000000004000) == 0x0000000000004000)
-                {
-
-                    pDlg->WriteLogFile(1, _T("JTAG加载成功。。。"));
-                    int_JtagTestSuccessTimes++;
-                }
-                else
-                {
-                    pDlg->WriteLogFile(1, _T("JTAG加载失败。。。"));
-                    int_JtagTestFailedTimes++;
-                }
-
-                int_JtagTestTotalTimes++;
-
-                str_JtagTestTimesTmp.Format(_T("%d"), int_JtagTestTotalTimes);
-                pDlg->WriteLogFile(0, _T("测试总数：") + str_JtagTestTimesTmp);
-                str_JtagTestTimesTmp.Format(_T("%d"), int_JtagTestSuccessTimes);
-                pDlg->WriteLogFile(0, _T("成功次数：") + str_JtagTestTimesTmp);
-                str_JtagTestTimesTmp.Format(_T("%d"), int_JtagTestFailedTimes);
-                pDlg->WriteLogFile(0, _T("失败次数：") + str_JtagTestTimesTmp);
-            }
-            else
-            {
-                // 关闭jtag加载超时定时器
-                pDlg->KillTimer(TIMERID_JTAG_TIMEOUT);
-
-                // 实验fpga加载成功
-                if ((uint64_FpgaReadData & 0x0000000000004000) == 0x0000000000004000)
-                {
-                    pDlg->int_FpgaUpdateStatus = 1;
-                    pDlg->WriteLogFile(1, _T("FPGA 升级："));
-                    if (pDlg->int_FpgaUpdateMode == FPGA_UPDATE_MODE_LOCAL)
-                    {
-                        pDlg->WriteLogFile(0, _T("FPGA本地加载成功！"));
-                    }
-                    else if (pDlg->int_FpgaUpdateMode == FPGA_UPDATE_MODE_ONLINE)
-                    {
-                        pDlg->WriteLogFile(0, _T("FPGA在线加载成功！"));
-
-                        // 发送烧录成功指令:<Loaded><Result>…</Result></Loaded>
-                        pDlg->wsEndpoint->send("<Loaded><Result>Successful</Result></Loaded>");
-                        // 启动数据采集定时器
-                        pDlg->SetTimer(TIMERID_DATA_SAMPLE, TIMERID_DATA_SAMPLE_TIME, NULL);
-                        pDlg->str_FpgaSampleData0 = _T("");
-                        pDlg->str_FpgaSampleData1 = _T("");
+				// 更新烧写进度条
+				uint64_SpiFlashPageAddr += uint_FpgaUpdateFileReadLen;
+				pDlg->Idc_Progress_FpgaUpdateProgress.SetPos(uint64_SpiFlashPageAddr); 
 
 
+			}
+			pDlg->FpgaWrite(0, 0x700, 0x0);
 
-                    }
-                }
-                else
-                {
-                    pDlg->int_FpgaUpdateStatus = 2;
-                    pDlg->WriteLogFile(1, _T("FPGA 升级："));
-                    if (pDlg->int_FpgaUpdateMode == FPGA_UPDATE_MODE_LOCAL)
-                    {
-                        pDlg->WriteLogFile(0, _T("FPGA本地加载失败！"));
-                    }
-                    else if (pDlg->int_FpgaUpdateMode == FPGA_UPDATE_MODE_ONLINE)
-                    {
-                        pDlg->WriteLogFile(0, _T("FPGA在线加载失败！"));
+			// tap状态机进入“RUN-TEST/IDLE”状态，TMS输出“01”
+			pDlg->FpgaWrite(0, 0x50, 0x2);
+			pDlg->FpgaWrite(0, 0x51, 0x0000000100000000);
 
-                        // 发送烧录失败指令:<Loaded><Result>…</Result></Loaded>
-                        pDlg->wsEndpoint->send("<Loaded><Result>Failed</Result></Loaded>");
+			// Loading device with a `jstart` instruction. 
+			pDlg->JtagSIR(6,0xc);
+			Sleep(1);
+			//Loading device with 'bypass' instruction.
+			pDlg->JtagSIR(6,0x3f);
+			//Loading device with 'bypass' instruction.
+			pDlg->JtagSIR(6,0x3f);
 
-                        // 更新上位机状态
-                        pDlg->str_WorkStatus = _T("Ready");
-                    }
-                }
-                break;
-            }
-        }
-    }
+			// Loading device with a `jstart` instruction. 
+			pDlg->JtagSIR(6,0xc);
+			Sleep(1);
+			pDlg->JtagSIR(6,0x3f);
+			pDlg->JtagSDR(1,0x0);
+
+			Sleep(500);
+			// 从主控fpga读取实验fpga加载完成标志位
+			str_FpgaReadData = pDlg->FpgaRead(0x10);
+			unsigned __int64 uint64_FpgaReadData = _tcstoui64(str_FpgaReadData,0,16);
+
+			// 关闭jtag加载超时定时器
+			pDlg->KillTimer(TIMERID_JTAG_TIMEOUT);
+
+			if (pDlg->Idc_Check_FPGAUpdateAutoTestEn.GetCheck())
+			{
+
+				// 实验fpga加载成功
+				if ((uint64_FpgaReadData & 0x0000000000004000) == 0x0000000000004000)
+				{
+
+					pDlg->WriteLogFile(1,_T("JTAG加载成功。。。"));
+					int_JtagTestSuccessTimes++;
+				}
+				else
+				{
+					pDlg->WriteLogFile(1,_T("JTAG加载失败。。。"));
+					int_JtagTestFailedTimes++;
+				}
+
+				int_JtagTestTotalTimes++;
+
+				str_JtagTestTimesTmp.Format(_T("%d"),int_JtagTestTotalTimes);
+				pDlg->WriteLogFile(0,_T("测试总数：") + str_JtagTestTimesTmp);
+				str_JtagTestTimesTmp.Format(_T("%d"),int_JtagTestSuccessTimes);
+				pDlg->WriteLogFile(0,_T("成功次数：") + str_JtagTestTimesTmp);
+				str_JtagTestTimesTmp.Format(_T("%d"),int_JtagTestFailedTimes);
+				pDlg->WriteLogFile(0,_T("失败次数：") + str_JtagTestTimesTmp);
+			}
+			else
+			{
+				//关闭文件
+				f_FpgaUpdateFile.Close();
 
 
-	//关闭文件
-	f_FpgaUpdateFile.Close();
+ 				// 实验fpga加载成功
+				if ((uint64_FpgaReadData & 0x0000000000004000) == 0x0000000000004000)
+				{
+					pDlg->int_FpgaUpdateStatus = 1;
+					if (pDlg->int_FpgaUpdateMode == FPGA_UPDATE_MODE_LOCAL)
+					{
+						pDlg->WriteLogFile(1,_T("FPGA 升级：\r\nFPGA本地加载成功！"));
+					}
+					else if (pDlg->int_FpgaUpdateMode == FPGA_UPDATE_MODE_ONLINE)
+					{
+						pDlg->WriteLogFile(1,_T("FPGA 升级：\r\nFPGA在线加载成功！"));
+
+						// 发送烧录成功指令:<Loaded><Result>…</Result></Loaded>
+						pDlg->wsEndpoint->send("<Loaded><Result>Successful</Result></Loaded>"); 
+        
+						// 启动数据采集定时器
+						pDlg->SetTimer( TIMERID_DATA_SAMPLE, TIMERID_DATA_SAMPLE_TIME, NULL );
+						pDlg->str_FpgaSampleData0 = _T("");
+						pDlg->str_FpgaSampleData1 = _T("");
+
+
+
+					
+					}
+				}
+				else
+				{
+					pDlg->int_FpgaUpdateStatus = 2;
+					if (pDlg->int_FpgaUpdateMode == FPGA_UPDATE_MODE_LOCAL)
+					{
+						pDlg->WriteLogFile(1,_T("FPGA 升级：\r\nFPGA本地加载失败！"));
+					}
+					else if (pDlg->int_FpgaUpdateMode == FPGA_UPDATE_MODE_ONLINE)
+					{
+						pDlg->WriteLogFile(1,_T("FPGA 升级：\r\nFPGA在线加载失败！"));
+
+						// 更新上位机状态
+						pDlg->str_WorkStatus = _T("Ready");
+
+						// 发送烧录失败指令:<Loaded><Result>…</Result></Loaded>
+						pDlg->wsEndpoint->send("<Loaded><Result>Failed</Result></Loaded>"); 
+					
+					}
+				}
+
+			}
+
+		}while(pDlg->Idc_Check_FPGAUpdateAutoTestEn.GetCheck());
+	}
+
     // 浏览文件按钮可用
     pDlg->Idc_Button_FPGAUpdateFileSelect.EnableWindow(TRUE);
     // 启动按钮可用
     pDlg->Idc_Button_FpgaUpdateStart.EnableWindow(TRUE);
 	
-
 	return 0;
-
 }
 
 
@@ -926,12 +981,10 @@ BOOL CUpperComputerDlg::AutoOpenMasterCom()
 					Idc_Button_ComOpen.EnableWindow(FALSE);
 					Idc_Button_ComClose.EnableWindow(TRUE);
 					Idc_Combo_ComSel.EnableWindow(FALSE);
-					Idc_Combo_ComSel.SetCurSel((i-1) & 0xff);    
+					Idc_Combo_ComSel.SetCurSel((i-1) & 0xff);
 					// 日志：“主控串口打开成功：”
 					// “串口号：COMX”
-					WriteLogFile(1,_T("主控串口打开成功："));
-					WriteLogFile(0,_T("串口号：")+str_ComPort);
-
+                    WriteLogFile(1, _T("主控串口打开成功：\r\n串口号：") + str_ComPort);
 					return 1;
 				}
 				else
@@ -955,28 +1008,39 @@ BOOL CUpperComputerDlg::AutoOpenMasterCom()
 
 }
 
+// 获取当前时间
+CString CUpperComputerDlg::GetTime()
+{
+    CString str_CurrentTime;
+    CString str_CurrentTimeMS;
+
+    // 获取日期、时、分、秒
+    CTime time_CurrentTime = CTime::GetCurrentTime();
+    str_CurrentTime = time_CurrentTime.Format(_T("%Y-%m-%d %H:%M:%S"));
+
+    // 获取ms时间
+    str_CurrentTimeMS.Format(_T("( %d ms ）"), timeGetTime());
+    return (_T("\r\n") + str_CurrentTime + str_CurrentTimeMS + _T("\r\n"));
+
+}
+
+
+
 // 打印日志文件
-void CUpperComputerDlg::LogDisplay(int int_NewLog, CString str_Log )
+void CUpperComputerDlg::LogDisplay(int int_NewLog, CString str_Log)
 {
     // 新日志内容，要标注时间
-    if ( int_NewLog )
+    if (int_NewLog)
     {
         // 获取当前时间
-        CString str_CurrentTime;   
-        CTime time_CurrentTime = CTime::GetCurrentTime();   
-        str_CurrentTime = time_CurrentTime.Format(_T("%Y-%m-%d %H:%M:%S")); 
-        str_CurrentTime = _T("\r") + str_CurrentTime + _T("\r\n");
-
-		//DWORD dw_CurrentTime;
-		//dw_CurrentTime = timeGetTime();
-		//str_CurrentTime.Format(_T("%d : "),dw_CurrentTime);
+        CString str_CurrentTime = GetTime();
 
 
         //更新编辑框内容
         CString strInfo;
         Idc_Edit_LogDisplay.GetWindowText(strInfo);
         int nLength = strInfo.GetLength();
-        Idc_Edit_LogDisplay.SetSel(nLength,nLength, 1);
+        Idc_Edit_LogDisplay.SetSel(nLength, nLength, 1);
         Idc_Edit_LogDisplay.ReplaceSel(str_CurrentTime);
 
 
@@ -986,39 +1050,32 @@ void CUpperComputerDlg::LogDisplay(int int_NewLog, CString str_Log )
     CString strInfo;
     Idc_Edit_LogDisplay.GetWindowText(strInfo);
     int nLength = strInfo.GetLength();
-    Idc_Edit_LogDisplay.SetSel(nLength,nLength, 1);
+    Idc_Edit_LogDisplay.SetSel(nLength, nLength, 1);
     Idc_Edit_LogDisplay.ReplaceSel(str_Log);
 
 
 }
 
 // 写日志文件
-void CUpperComputerDlg::WriteLogFile(int int_NewLog, CString str_Log )
+void CUpperComputerDlg::WriteLogFile(int int_NewLog, CString str_Log)
 {
     // 新日志内容，要标注时间
-    if ( int_NewLog )
+    if (int_NewLog)
     {
         // 获取当前时间
-        CString str_CurrentTime;   
-        CTime time_CurrentTime = CTime::GetCurrentTime();   
-        str_CurrentTime = time_CurrentTime.Format(_T("%Y-%m-%d %H:%M:%S")); 
-        str_CurrentTime = _T("\r\n") + str_CurrentTime + _T("\r\n");
+        CString str_CurrentTime = GetTime();
 
-		//DWORD dw_CurrentTime;
-		//dw_CurrentTime = timeGetTime();
-		//str_CurrentTime.Format(_T("%d : "),dw_CurrentTime);
-
-		f_LogFile.Write(str_CurrentTime,str_CurrentTime.GetLength());
+        f_LogFile.Write(str_CurrentTime, str_CurrentTime.GetLength());
 
     }
     // 日志内容写入日志文件
     str_Log += _T("\r\n");
-	f_LogFile.Write(str_Log,str_Log.GetLength());
+    f_LogFile.Write(str_Log, str_Log.GetLength());
 
-    if (1 == Idc_Check_LogDisplay.GetCheck()) 
+    if (1 == Idc_Check_LogDisplay.GetCheck())
     {
         //更新编辑框内容
-		LogDisplay(int_NewLog, str_Log );
+        LogDisplay(int_NewLog, str_Log);
     }
 
 
@@ -1030,19 +1087,19 @@ void CUpperComputerDlg::WriteLogFile(int int_NewLog, CString str_Log )
 // 数据位：ExpComDataBits;       /* Number of bits/byte, 4-8        */
 // 校验位：ExpComParityBit;      /* 0-4=None,Odd,Even,Mark,Space    */
 // 停止位：ExpComStopBit;        /* 0,1,2 = 1, 1.5, 2               */
-BOOL CUpperComputerDlg::ExpComOpen(unsigned int uint_ExpComBautrate, BYTE byte_ExpComDataBits, BYTE byte_ExpComParityBit, BYTE byte_ExpComStopBit)
+BOOL CUpperComputerDlg::ExpComOpen(int int_ExpComBautrate, BYTE byte_ExpComDataBits, BYTE byte_ExpComParityBit, BYTE byte_ExpComStopBit)
 {
 	unsigned __int64 uint64_ExpComParam;
 	unsigned __int64 uint64_ExpComClkDivider;
 
-	if (uint_ExpComBautrate <= 0)
+	if (int_ExpComBautrate <= 0)
 	{
 		// 日志
         WriteLogFile(1,_T("实验串口波特率小于等于0！"));
 
 		return 0;
 	}
-	uint64_ExpComClkDivider = EXPCOM_CLK_FREQ / uint_ExpComBautrate;
+	uint64_ExpComClkDivider = EXPCOM_CLK_FREQ / int_ExpComBautrate;
 	uint64_ExpComParam = ((uint64_ExpComClkDivider << 16) | 0x1000 | (byte_ExpComDataBits << 8) | (byte_ExpComParityBit << 4) | byte_ExpComStopBit);
 
 	// 写入主控fpga
@@ -1085,22 +1142,22 @@ BOOL CUpperComputerDlg::ExpComClose()
 }
 
 // 读实验串口
-unsigned int CUpperComputerDlg::ExpComRead(BYTE *byte_ExpComReadBuffer,unsigned int uint_ExpComReadLength)
+unsigned int CUpperComputerDlg::ExpComRead(BYTE *byte_ExpComReadBuffer, unsigned int uint_ExpComReadLength)
 {
-	unsigned int uint_ExpComReadLengthTmp=0;
-	CString str_FpgaReadData;
-	int i;
+    unsigned int uint_ExpComReadLengthTmp = 0;
+    CString str_FpgaReadData;
+    int i;
 
-	//uint_ExpComReadLengthTmp = FpgaBlockRead(0x62, byte_ExpComReadBuffer, 0x1, uint_ExpComReadLength);
+    //uint_ExpComReadLengthTmp = FpgaBlockRead(0x62, byte_ExpComReadBuffer, 0x1, uint_ExpComReadLength);
 
-	for (i = 0; i < uint_ExpComReadLength; i++)
-	{
-		str_FpgaReadData = FpgaRead(0x62);
-		byte_ExpComReadBuffer[i] = (BYTE)(_tcstoul(str_FpgaReadData.Mid(14, 2), 0, 16));
-	
-	}
+    for (i = 0; i < uint_ExpComReadLength; i++)
+    {
+        str_FpgaReadData = FpgaRead(0x38);
+        byte_ExpComReadBuffer[i] = (BYTE)(_tcstoul(str_FpgaReadData.Mid(8, 2), 0, 16));
 
-	return uint_ExpComReadLengthTmp;
+    }
+
+    return uint_ExpComReadLengthTmp;
 }
 
 // 写实验串口
@@ -1406,7 +1463,7 @@ unsigned int CUpperComputerDlg::FpgaBlockRead(unsigned int uint_ReadAddr, BYTE *
 
 	uint_ComReadTimeCount = 0;
 
-	// 检测缓冲区字节数，接收到总字节数或超时100ms，退出循环等待
+    // 检测缓冲区字节数，接收到总字节数或超时，退出循环等待
 	for(;;)
 	{
 	    uint_ComReadLength = cpubsub_MasterCom.GetDataLen();
@@ -1581,69 +1638,78 @@ void CUpperComputerDlg::ExpFpgaWrite(unsigned int uint_WriteCmd, unsigned __int6
 
 CString CUpperComputerDlg::ExpFpgaRead(unsigned __int64 uint64_ReadAddr)
 {
-	// fpga 寄存器读取
+    // fpga 寄存器读取
     BYTE byte_FpgaReadBuf[128];
     BYTE byte_FpgaReadCheck = 0xF6;
     unsigned int uint_FpgaReadLength = 0;
-	unsigned int i;
-	unsigned int uint_ComReadTimeCount;
-	CString str_FpgaReadData = _T("");
-	CString str_temp;
+    unsigned int i;
+    unsigned int uint_ComReadTimeCount;
+    CString str_FpgaReadData = _T("");
+    CString str_temp;
 
-	// 写入读指令
-	ExpFpgaWrite(1,uint64_ReadAddr,0);
-	uint_ComReadTimeCount = 0;
+    // 写入读指令
+    ExpFpgaWrite(1, uint64_ReadAddr, 0);
+    uint_ComReadTimeCount = 0;
 
-	// 检测缓冲区字节数，接收到12个字节或超时100ms，退出循环等待
-	for(;;)
-	{
-		str_FpgaReadData = FpgaRead(0x61);
-		// 截取实验串口接收到的数据个数（byte）
-		uint_FpgaReadLength = _tcstoul(str_FpgaReadData.Mid(6, 4), 0, 16);
-		uint_ComReadTimeCount++;
+    // 检测缓冲区字节数，接收到12个字节或超时100ms，退出循环等待
+    for (;;)
+    {
+        str_FpgaReadData = FpgaRead(0x62);
+        // 截取实验串口接收到的数据个数（byte）
+        uint_FpgaReadLength = _tcstoul(str_FpgaReadData.Mid(8, 4), 0, 16);
+        uint_ComReadTimeCount++;
 
-		if(uint_FpgaReadLength >= 12)
-		{
-			break;	
-		}
-		else if (uint_ComReadTimeCount < 100)
-		{	
-			Sleep(1);
-		}
-		else
-		{
-			return _T("");
-		}
-	
-	}
+        if (uint_FpgaReadLength >= 12)
+        {
+            break;
+        }
+        else if (uint_ComReadTimeCount < 100)
+        {
+            Sleep(1);
+        }
+        else
+        {
+            // 日志
+            WriteLogFile(1, _T("实验FPGA读取失败！"));
 
-	// 读取数据
-    ExpComRead( byte_FpgaReadBuf, uint_FpgaReadLength );
+            return _T("");
+        }
 
-	str_FpgaReadData = _T("");
-	// 校验协议头部数据
+    }
+
+    // 读取数据
+    ExpComRead(byte_FpgaReadBuf, uint_FpgaReadLength);
+
+    str_FpgaReadData = _T("");
+    // 校验协议头部数据
     if (byte_FpgaReadBuf[0] == 0xF6)
     {
         // 计算校验码
-		for ( i = 1; i < 12; i++ )  
+        for (i = 1; i < 12; i++)
         {
             byte_FpgaReadCheck = byte_FpgaReadCheck ^ byte_FpgaReadBuf[i];
         }
 
-		//校验正确后，转换成64位字符串
-        if ( byte_FpgaReadCheck == 0x00 )  
+        //校验正确后，转换成64位字符串
+        if (byte_FpgaReadCheck == 0x00)
         {
-            for ( i = 3; i < 11; i++ )
+            for (i = 3; i < 11; i++)
             {
-				str_temp.Format(_T("%02x"),byte_FpgaReadBuf[i]);
-				str_FpgaReadData += str_temp;
-                            
+                str_temp.Format(_T("%02x"), byte_FpgaReadBuf[i]);
+                str_FpgaReadData += str_temp;
+
             }
+
+        }
+        else
+        {
+            // 日志
+            WriteLogFile(1, _T("实验FPGA读取失败！"));
 
         }
     }
 
-	return str_FpgaReadData;
+    return str_FpgaReadData;
 
 
 
@@ -1911,6 +1977,11 @@ void CUpperComputerDlg::OnBnClickedButtonDisconnect()
 void CUpperComputerDlg::OnBnClickedButtonDisconnect()// 重写
 {
     wsEndpoint->close(1000, "User clicked to close.");
+    // 关闭相关定时器
+    KillTimer(TIMERID_DATA_SAMPLE);
+    KillTimer(TIMERID_TEST_DATA_SAMPLE);
+    KillTimer(TIMERID_FILEREV);
+
     // 更新工作模式为实验模式
     str_WorkMode = _T("ExperimentMode");
     // 更新上位机状态
@@ -1956,7 +2027,6 @@ void CUpperComputerDlg::OnTimer(UINT nIDEvent)
             KillTimer(TIMERID_DATA_SAMPLE);
             KillTimer(TIMERID_TEST_DATA_SAMPLE);
             KillTimer(TIMERID_FILEREV);
-            KillTimer(TIMERID_EXPCOMRX);
 
 			OnBnClickedButtonConnect();
             m_ServerRegisterStatus = 0;
@@ -1972,7 +2042,6 @@ void CUpperComputerDlg::OnTimer(UINT nIDEvent)
             KillTimer(TIMERID_DATA_SAMPLE);
             KillTimer(TIMERID_TEST_DATA_SAMPLE);
             KillTimer(TIMERID_FILEREV);
-            KillTimer(TIMERID_EXPCOMRX);
 
             // 日志：“服务器注册失败：”
             WriteLogFile(1,_T("服务器注册失败。"));
@@ -1980,6 +2049,7 @@ void CUpperComputerDlg::OnTimer(UINT nIDEvent)
             // 向服务器发送注册指令
             wsEndpoint->send(std::string("<Register><Id>") + LPCSTR(str_UpperComputerID) + "</Id></Register>");
 		}
+        // 如果主控串口没打开，继续执行打开操作
         if (cpubsub_MasterCom.m_hCom==INVALID_HANDLE_VALUE)
         {
             AutoOpenMasterCom();
@@ -2025,53 +2095,73 @@ void CUpperComputerDlg::OnTimer(UINT nIDEvent)
             }
 
 
-			//读取鼠标键盘数据
-			CString str_FpgaReadTmp;
-			CString str_Ps2MouseSendData = _T("");
-			int int_Ps2MouseSendDataLength = 0;
-			CString str_Ps2KeyboardSendData = _T("");
-			int int_Ps2KeyboardSendDataLength = 0;
-			CString str_Ps2MouseDataVld;
-			CString str_Ps2KeyboardDataVld;
-			do
-			{
-				// 读取鼠标键盘状态，判断主机是否发送数据
-				str_FpgaReadTmp = FpgaRead(0x30);
-				// 截取鼠标数据有效位
-				str_Ps2MouseDataVld = str_FpgaReadTmp.Mid(1, 1);
-				// 截取键盘数据有效位
-				str_Ps2KeyboardDataVld = str_FpgaReadTmp.Mid(9, 1);
+            //读取鼠标键盘数据
+            CString str_FpgaReadTmp;
+            CString str_Ps2MouseSendData = _T("");
+            int int_Ps2MouseSendDataLength = 0;
+            CString str_Ps2KeyboardSendData = _T("");
+            int int_Ps2KeyboardSendDataLength = 0;
+            CString str_ExpComSendData = _T("");
+            int int_ExpComSendDataLength = 0;
+            CString str_Ps2MouseDataVld;
+            CString str_Ps2KeyboardDataVld;
+            CString str_ExpComDataVld;
+            do
+            {
+                // 读取鼠标、键盘、实验串口状态，判断主机是否发送数据
+                str_FpgaReadTmp = FpgaRead(0x38);
+                // 截取鼠标数据有效位
+                str_Ps2MouseDataVld = str_FpgaReadTmp.Mid(10, 1);
+                // 截取键盘数据有效位
+                str_Ps2KeyboardDataVld = str_FpgaReadTmp.Mid(13, 1);
+                // 截取实验串口数据有效位
+                str_ExpComDataVld = str_FpgaReadTmp.Mid(7, 1);
 
-				// 截取鼠标数据
-				if (str_Ps2MouseDataVld == _T("1"))
-				{
-					int_Ps2MouseSendDataLength++;
-					str_Ps2MouseSendData += str_FpgaReadTmp.Mid(2, 2);
-				}
-				// 截取键盘数据
-				if (str_Ps2KeyboardDataVld == _T("1"))
-				{
-					int_Ps2KeyboardSendDataLength++;
-					str_Ps2KeyboardSendData += str_FpgaReadTmp.Mid(10, 2);
-				}
+                // 截取鼠标数据
+                if (str_Ps2MouseDataVld == _T("1"))
+                {
+                    int_Ps2MouseSendDataLength++;
+                    str_Ps2MouseSendData += str_FpgaReadTmp.Mid(11, 2);
+                }
+                // 截取键盘数据
+                if (str_Ps2KeyboardDataVld == _T("1"))
+                {
+                    int_Ps2KeyboardSendDataLength++;
+                    str_Ps2KeyboardSendData += str_FpgaReadTmp.Mid(14, 2);
+                }
+                // 截取实验串口数据
+                if (str_ExpComDataVld == _T("1"))
+                {
+                    int_ExpComSendDataLength++;
+                    str_ExpComSendData += str_FpgaReadTmp.Mid(8, 2);
+                }
 
-			}while(((str_Ps2MouseDataVld == _T("1")) | (str_Ps2KeyboardDataVld == _T("1"))) && (int_Ps2MouseSendDataLength < 256) && (int_Ps2KeyboardSendDataLength < 256));
+            } while (((str_Ps2MouseDataVld == _T("1")) | (str_Ps2KeyboardDataVld == _T("1")) | (str_ExpComDataVld == _T("1"))) && (int_Ps2MouseSendDataLength < 256) && (int_Ps2KeyboardSendDataLength < 256) && (int_ExpComSendDataLength < 256));
 
             // 给客户端发送鼠标键盘数据指令：<PS2Send><MouseLength>…</MouseLength><MouseData>…</MouseData>
-			//                               <KeyboardLength>…</KeyboardLength><KeyboardData>…</KeyboardData></PS2Send>
-			if ((int_Ps2MouseSendDataLength > 0) || (int_Ps2KeyboardSendDataLength > 0))
-			{
-				CString str_Ps2MouseSendDataLength;
-				CString str_Ps2KeyboardSendDataLength;
+            //                               <KeyboardLength>…</KeyboardLength><KeyboardData>…</KeyboardData></PS2Send>
+            if ((int_Ps2MouseSendDataLength > 0) || (int_Ps2KeyboardSendDataLength > 0))
+            {
+                CString str_Ps2MouseSendDataLength;
+                CString str_Ps2KeyboardSendDataLength;
 
-				str_Ps2MouseSendDataLength.Format(_T("%d"),int_Ps2MouseSendDataLength);
-				str_Ps2KeyboardSendDataLength.Format(_T("%d"),int_Ps2KeyboardSendDataLength);
+                str_Ps2MouseSendDataLength.Format(_T("%d"), int_Ps2MouseSendDataLength);
+                str_Ps2KeyboardSendDataLength.Format(_T("%d"), int_Ps2KeyboardSendDataLength);
 
-                //SendCmd(_T("<PS2Send><MouseLength>")+str_Ps2MouseSendDataLength+_T("</MouseLength><MouseData>")+str_Ps2MouseSendData+_T("</MouseData><KeyboardLength>")+str_Ps2KeyboardSendDataLength+_T("</KeyboardLength><KeyboardData>")+str_Ps2KeyboardSendData+_T("</KeyboardData></PS2Send>"));
-                CString toSend = _T("<PS2Send><MouseLength>") + str_Ps2MouseSendDataLength 
-                    + _T("</MouseLength><MouseData>") + str_Ps2MouseSendData + _T("</MouseData><KeyboardLength>") 
-                    + str_Ps2KeyboardSendDataLength + _T("</KeyboardLength><KeyboardData>") 
-                    + str_Ps2KeyboardSendData + _T("</KeyboardData></PS2Send>");
+                //SendCmd(_T("<PS2Send><MouseLength>") + str_Ps2MouseSendDataLength + _T("</MouseLength><MouseData>") + str_Ps2MouseSendData + _T("</MouseData><KeyboardLength>") + str_Ps2KeyboardSendDataLength + _T("</KeyboardLength><KeyboardData>") + str_Ps2KeyboardSendData + _T("</KeyboardData></PS2Send>"));
+                CString toSend = _T("<PS2Send><MouseLength>") + str_Ps2MouseSendDataLength + _T("</MouseLength><MouseData>") + str_Ps2MouseSendData + _T("</MouseData><KeyboardLength>") + str_Ps2KeyboardSendDataLength + _T("</KeyboardLength><KeyboardData>") + str_Ps2KeyboardSendData + _T("</KeyboardData></PS2Send>");
+                wsEndpoint->send(LPCSTR(toSend));
+            }
+
+            // 向服务器发送实验串口接收到的数据指令：<COMSend><Length>…</Length><Data>…</Data></COMSend>
+            if ((int_ExpComSendDataLength > 0) && bool_ExpComStatus)
+            {
+                CString str_ExpComSendDataLength;
+
+                str_ExpComSendDataLength.Format(_T("%d"), int_ExpComSendDataLength);
+
+                //SendCmd(_T("<COMSend><Length>") + str_ExpComSendDataLength + _T("</Length>") + _T("<Data>") + str_ExpComSendData + _T("</Data></COMSend>"));
+                CString toSend = _T("<COMSend><Length>") + str_ExpComSendDataLength + _T("</Length>") + _T("<Data>") + str_ExpComSendData + _T("</Data></COMSend>");
                 wsEndpoint->send(LPCSTR(toSend));
             }
         }
@@ -2123,67 +2213,19 @@ void CUpperComputerDlg::OnTimer(UINT nIDEvent)
         
 
     }
-	// 实验串口接收数据读取
-	else if ( nIDEvent == TIMERID_EXPCOMRX )
-	{
-		BYTE byte_ExpComReadBuf[EXPCOMBUFSIZE];
-		unsigned int uint_ExpComReadLength = 0;
-		unsigned int uint_ExpComReadCount = 0;
-		CString str_ExpComReadLength = _T("");
-		CString str_ExpComReadData = _T("");
 
-
-		// 关闭实验串口接收定时器
-		KillTimer(TIMERID_EXPCOMRX);
-
-
-		// 检测缓冲区字节数
-		CString str_FpgaReadData = FpgaRead(0x61);
-		// 截取实验串口接收到的数据个数（byte）
-		uint_ExpComReadLength = _tcstoul(str_FpgaReadData.Mid(6, 4), 0, 16);
-
-		if (uint_ExpComReadLength > 0)
-		{
-			// 读取数据
-			ExpComRead( byte_ExpComReadBuf, uint_ExpComReadLength );
-
-			// 把数据转成字符串
-			for (uint_ExpComReadCount = 0; uint_ExpComReadCount < uint_ExpComReadLength ; uint_ExpComReadCount++)
-			{
-				str_temp.Format(_T("%02x"),byte_ExpComReadBuf[uint_ExpComReadCount]);
-				str_ExpComReadData += str_temp;
-
-			}
-
-			str_ExpComReadLength.Format(_T("%d"),uint_ExpComReadLength);
-
-			// 向服务器发送实验串口接收到的数据指令：<COMSend><Length>…</Length><Data>…</Data></COMSend>
-			str_temp = _T("<COMSend><Length>") + str_ExpComReadLength + _T("</Length>") + _T("<Data>")+str_ExpComReadData+_T("</Data></COMSend>");
-			//SendCmd(str_temp);
-            wsEndpoint->send(LPCSTR(str_temp));
-
-		}
-
-
-		// 重新启动实验串口接收定时器
-		SetTimer( TIMERID_EXPCOMRX, TIMERID_EXPCOMRX_TIME, NULL );
-
-	}
 	else if (nIDEvent == TIMERID_JTAG_TIMEOUT)
 	{	
-		// 关闭实验串口接收定时器
+        // 关闭JTAG加载超时定时器
 		KillTimer(TIMERID_JTAG_TIMEOUT);
 		
-
-
-		WriteLogFile(1,_T("FPGA 升级："));
 		if (int_FpgaUpdateMode == FPGA_UPDATE_MODE_LOCAL)
 		{
-			WriteLogFile(0,_T("FPGA本地加载超时失败！"));
+            WriteLogFile(1, _T("FPGA 升级：\r\nFPGA本地加载超时失败！"));
 		}
 		else if (int_FpgaUpdateMode == FPGA_UPDATE_MODE_ONLINE)
 		{
-			WriteLogFile(0,_T("FPGA在线加载超时失败！"));
+            WriteLogFile(1, _T("FPGA 升级：\r\nFPGA在线加载超时失败！"));
 
 			// 发送烧录失败指令:<Loaded><Result>…</Result></Loaded>
 			//SendCmd(_T("<Loaded><Result>Failed</Result></Loaded>")); 
@@ -2213,14 +2255,13 @@ void CUpperComputerDlg::OnTimer(UINT nIDEvent)
 					// 设置实验fpga测试bit文件路径
 					Idc_Edit_FpgaUpdateFilePath.SetWindowText(_T("program\\ExpFpgaTest.bit"));
 					// 选择jtag加载模式
-					Idc_Check_FPGAUpdateJtagTestEn.SetCheck(0);
+					Idc_Check_FPGAUpdateAutoTestEn.SetCheck(0);
 					Idc_Radio_FPGAUpdateJtagSelect.SetCheck(1);
 					Idc_Radio_FPGAUpdateSpiFlashSelect.SetCheck(0);
 					// 设置fpga加载模式为本地模式
 					int_FpgaUpdateMode = FPGA_UPDATE_MODE_LOCAL;
 
-					WriteLogFile(1,_T("硬件自检："));
-					WriteLogFile(0,_T("启动JTAG接口测试。。。"));
+                    WriteLogFile(1, _T("硬件自检：\r\n启动JTAG接口测试。。。"));
 
 					// 启动jtag加载线程
 					FpgaUpdateThreadStart();
@@ -2229,9 +2270,7 @@ void CUpperComputerDlg::OnTimer(UINT nIDEvent)
 				}
 				else 
 				{
-					WriteLogFile(1,_T("硬件自检："));
-					WriteLogFile(0,_T("没有发现实验fpga测试bit文件！"));
-					WriteLogFile(0,_T("退出硬件自检程序！"));
+                    WriteLogFile(1, _T("硬件自检：\r\n没有发现实验fpga测试bit文件！\r\n退出硬件自检程序！"));
 					OnBnClickedButtonHardwareteststop();
 				}
 			
@@ -2354,10 +2393,8 @@ void CUpperComputerDlg::OnTimer(UINT nIDEvent)
 				str_FpgaReadData1 = FpgaRead(0x21);
 
 				str_temp.Format(_T("%016llx"),uint64_HWTPattern);
-				WriteLogFile(1,_T("硬件自检："));
-				WriteLogFile(0,_T("数码管数据位测试图案：0x") + str_temp);
 				str_temp1 = str_FpgaReadData1.Mid(12, 2) + str_FpgaReadData1.Mid(10, 2) + str_FpgaReadData1.Mid(8, 2) + str_FpgaReadData1.Mid(6, 2) + str_FpgaReadData0.Mid(14, 2) + str_FpgaReadData0.Mid(12, 2) + str_FpgaReadData0.Mid(10, 2) + str_FpgaReadData0.Mid(8, 2);
-				WriteLogFile(0,_T("数码管数据位测试显示图案：0x") + str_temp1);
+                WriteLogFile(1, _T("硬件自检：\r\n数码管数据位测试图案：0x") + str_temp + _T("\r\n数码管数据位测试显示图案：0x") + str_temp1);
 
 				if (str_temp1 == str_temp)
 				{
@@ -2467,10 +2504,8 @@ void CUpperComputerDlg::OnTimer(UINT nIDEvent)
 				str_FpgaReadData0 = FpgaRead(0x20);
 
 				str_temp.Format(_T("%08x"),uint64_HWTPattern);
-				WriteLogFile(1,_T("硬件自检："));
-				WriteLogFile(0,_T("LED测试图案：0x") + str_temp);
 				str_temp1 = str_FpgaReadData0.Mid(6, 2)+ str_FpgaReadData0.Mid(4, 2)+ str_FpgaReadData0.Mid(2, 2)+ str_FpgaReadData0.Mid(0, 2);
-				WriteLogFile(0,_T("LED测试显示图案：0x") + str_temp1);
+                WriteLogFile(1, _T("硬件自检：\r\nLED测试图案：0x") + str_temp + _T("\r\nLED测试显示图案：0x") + str_temp1);
 
 				if (str_temp1 == str_temp)
 				{
@@ -2532,10 +2567,8 @@ void CUpperComputerDlg::OnTimer(UINT nIDEvent)
 				str_FpgaReadData0 = ExpFpgaRead(0x10);
 
 				str_temp.Format(_T("%016llx"),~uint64_HWTPattern);
-				WriteLogFile(1,_T("硬件自检："));
-				WriteLogFile(0,_T("拨码开关测试图案：0x") + str_temp);
 				str_temp1 = str_FpgaReadData0.Mid(14, 2)+ str_FpgaReadData0.Mid(12, 2)+ str_FpgaReadData0.Mid(10, 2)+ str_FpgaReadData0.Mid(8, 2) +str_FpgaReadData0.Mid(6, 2)+ str_FpgaReadData0.Mid(4, 2)+ str_FpgaReadData0.Mid(2, 2)+ str_FpgaReadData0.Mid(0, 2);
-				WriteLogFile(0,_T("拨码开关测试显示图案：0x") + str_temp1);
+                WriteLogFile(1, _T("硬件自检：\r\n拨码开关测试图案：0x") + str_temp + _T("\r\n拨码开关测试显示图案：0x") + str_temp1);
 
 				if (str_temp1 == str_temp)
 				{
@@ -2596,9 +2629,7 @@ void CUpperComputerDlg::OnTimer(UINT nIDEvent)
 				str_FpgaReadData0 = ExpFpgaRead(0x11);
 
 				str_temp.Format(_T("%02x"),((BYTE)(~uint64_HWTPattern)));
-				WriteLogFile(1,_T("硬件自检："));
-				WriteLogFile(0,_T("按键测试图案：0x") + str_temp);
-				WriteLogFile(0,_T("按键测试显示图案：0x") + str_FpgaReadData0.Mid(14, 2));
+                WriteLogFile(1, _T("硬件自检：\r\n按键测试图案：0x") + str_temp + _T("\r\n按键测试显示图案：0x") + str_FpgaReadData0.Mid(14, 2));
 
 				if (str_FpgaReadData0.Mid(14, 2) == str_temp)
 				{
@@ -2639,313 +2670,280 @@ void CUpperComputerDlg::OnTimer(UINT nIDEvent)
 		{
 			unsigned __int64 uint64_FpgaReadTmp;
 
-			// 启动
-			if (int_HWTTimeOutCnt == 0)
-			{
-				// 复位实验fpga的鼠标模块，bit-13是实验fpga的prog-b信号
-				FpgaWrite(0, 0x10, 0x0000000000000200);
-				Sleep(10);
-				FpgaWrite(0, 0x10, 0x0000000000000201);
-				WriteLogFile(1,_T("硬件自检："));
-				WriteLogFile(0,_T("启动PS2接口测试。。。"));
+            // 启动
+            if (int_HWTTimeOutCnt == 0)
+            {
+                // 复位实验fpga的鼠标模块，bit-13是实验fpga的prog-b信号
+                FpgaWrite(0, 0x10, 0x0000000000000200);
+                Sleep(10);
+                FpgaWrite(0, 0x10, 0x0000000000000201);
+                WriteLogFile(1, _T("硬件自检：\r\n启动PS2接口测试。。。"));
 
-				int_HWTTimeOutCnt++;
-				int_HWTCnt = 0;
-			
-			}
-			// 已启动PS2接口测试，未超时
-			else if (int_HWTTimeOutCnt < HWT_PS2_TIMEOUT)
-			{
-				int_HWTTimeOutCnt++;
+                int_HWTTimeOutCnt++;
+                int_HWTCnt = 0;
 
-				if (int_HWTCnt == 0)
-				{
-					// 读取鼠标状态，判断主机是否发送数据
-					uint64_FpgaReadTmp = _tcstoui64(FpgaRead(0x30),0,16);
+            }
+            // 已启动PS2接口测试，未超时
+            else if (int_HWTTimeOutCnt < HWT_PS2_TIMEOUT)
+            {
+                int_HWTTimeOutCnt++;
 
-					if ((uint64_FpgaReadTmp & 0x0100000000000000) == 0x0100000000000000)
-					{
-						// 判断接收到的数据
-						if ((uint64_FpgaReadTmp & 0x00ff000000000000) == 0x00ff000000000000)
-						{
-							// 返回应答数据
-							FpgaWrite(0, 0x30, 0x1fa00000000);
-							FpgaWrite(0, 0x30, 0x1aa00000000);
-							int_HWTCnt++;
-						}
-					}
-				}
-				else if (int_HWTCnt == 1)
-				{
-					// 读取鼠标状态，判断主机是否发送数据
-					uint64_FpgaReadTmp = _tcstoui64(FpgaRead(0x30),0,16);
+                if (int_HWTCnt == 0)
+                {
+                    // 读取鼠标状态，判断主机是否发送数据
+                    uint64_FpgaReadTmp = _tcstoui64(FpgaRead(0x38), 0, 16);
 
-					if ((uint64_FpgaReadTmp & 0x0100000000000000) == 0x0100000000000000)
-					{
-						// 判断接收到的数据
-						if ((uint64_FpgaReadTmp & 0x00ff000000000000) == 0x00f4000000000000)
-						{
-							// 返回应答数据
-							FpgaWrite(0, 0x30, 0x1fa00000000);
-							int_HWTCnt++;
+                    if ((uint64_FpgaReadTmp & 0x0000000000100000) == 0x0000000000100000)
+                    {
+                        // 判断接收到的数据
+                        if ((uint64_FpgaReadTmp & 0x00000000000ff000) == 0x00000000000ff000)
+                        {
+                            // 返回应答数据
+                            FpgaWrite(0, 0x31, 0xfa);
+                            FpgaWrite(0, 0x31, 0xaa);
+                            int_HWTCnt++;
+                        }
+                    }
+                }
+                else if (int_HWTCnt == 1)
+                {
+                    // 读取鼠标状态，判断主机是否发送数据
+                    uint64_FpgaReadTmp = _tcstoui64(FpgaRead(0x38), 0, 16);
 
-						}
-					}
-				}
-				else if (int_HWTCnt == 2)
-				{
-					int_HWTCnt++;
+                    if ((uint64_FpgaReadTmp & 0x0000000000100000) == 0x0000000000100000)
+                    {
+                        // 判断接收到的数据
+                        if ((uint64_FpgaReadTmp & 0x00000000000ff000) == 0x00000000000f4000)
+                        {
+                            // 返回应答数据
+                            FpgaWrite(0, 0x31, 0xfa);
+                            int_HWTCnt++;
 
-					// 键盘鼠标状态初始化
-					FpgaWrite(0, 0x30, 0x00000108000001f0);
-					FpgaWrite(0, 0x30, 0x000001000000011b);
-					FpgaWrite(0, 0x30, 0x00000100000001f0);
-					FpgaWrite(0, 0x30, 0x000000000000011c);
-				}
-				else if (int_HWTCnt == 3)
-				{
-					int_HWTCnt++;
+                        }
+                    }
+                }
+                else if (int_HWTCnt == 2)
+                {
+                    int_HWTCnt++;
 
-					// 发送键盘"A"键值,需连续发送2个
-					FpgaWrite(0, 0x30, 0x000000000000011c);
-					FpgaWrite(0, 0x30, 0x000000000000011c);
+                    // 键盘状态初始化
+                    FpgaWrite(0, 0x30, 0xf0);
+                    FpgaWrite(0, 0x30, 0x1b);
+                    FpgaWrite(0, 0x30, 0xf0);
+                    FpgaWrite(0, 0x30, 0x1c);
 
-					//int_HWTCnt = 6;
-					//// 发送鼠标左键键值
-					//FpgaWrite(0, 0x30, 0x0000010900000000);
-					//FpgaWrite(0, 0x30, 0x0000010000000000);
-					//FpgaWrite(0, 0x30, 0x0000010000000000);
+                    // 鼠标状态初始化
+                    FpgaWrite(0, 0x31, 0x08);
+                    FpgaWrite(0, 0x31, 0x00);
+                    FpgaWrite(0, 0x31, 0x00);
+                }
+                else if (int_HWTCnt == 3)
+                {
+                    int_HWTCnt++;
 
-				}
-				else if (int_HWTCnt == 4)
-				{
-					int_HWTCnt++;
-
-					// 读取实验fpga采集到的键盘"A"键值信息
-					str_FpgaReadData0 = ExpFpgaRead(0x98);
-
-					if (str_FpgaReadData0.Mid(13, 3) == _T("11c"))
-					{
-						WriteLogFile(1,_T("硬件自检："));
-						WriteLogFile(0,_T("键盘\"A\"键按下测试。。。"));
-					
-						// 取消键盘"A"键值
-						FpgaWrite(0, 0x30, 0x00000000000001f0);
-						FpgaWrite(0, 0x30, 0x000000000000011c);
+                    // 发送键盘"A"键值,需连续发送2个
+                    FpgaWrite(0, 0x30, 0x1c);
+                    FpgaWrite(0, 0x30, 0x1c);
 
 
-					}
-					else
-					{
-						WriteLogFile(1,_T("硬件自检："));
-						WriteLogFile(0,_T("键盘\"A\"键按下测试失败！"));
-						WriteLogFile(0,_T("退出硬件自检程序！"));
-						OnBnClickedButtonHardwareteststop();
-				
-					}
+                }
+                else if (int_HWTCnt == 4)
+                {
+                    int_HWTCnt++;
 
-				}
-				else if (int_HWTCnt == 5)
-				{
-					int_HWTCnt++;
+                    // 读取实验fpga采集到的键盘"A"键值信息
+                    str_FpgaReadData0 = ExpFpgaRead(0x98);
 
-					// 读取实验fpga采集到的键盘"A"键值信息
-					str_FpgaReadData0 = ExpFpgaRead(0x98);
+                    if (str_FpgaReadData0.Mid(13, 3) == _T("11c"))
+                    {
+                        WriteLogFile(1, _T("硬件自检：\r\n键盘\"A\"键按下测试。。。"));
 
-					if (str_FpgaReadData0.Mid(13, 3) == _T("01c"))
-					{
-						WriteLogFile(1,_T("硬件自检："));
-						WriteLogFile(0,_T("键盘\"A\"键取消测试。。。"));
-					
-						// 发送鼠标左键键值
-						FpgaWrite(0, 0x30, 0x0000010900000000);
-						FpgaWrite(0, 0x30, 0x0000010000000000);
-						FpgaWrite(0, 0x30, 0x0000010000000000);
+                        // 取消键盘"A"键值
+                        FpgaWrite(0, 0x30, 0xf0);
+                        FpgaWrite(0, 0x30, 0x1c);
 
 
-					}
-					else
-					{
-						WriteLogFile(1,_T("硬件自检："));
-						WriteLogFile(0,_T("键盘\"A\"键取消测试失败！"));
-						WriteLogFile(0,_T("退出硬件自检程序！"));
-						OnBnClickedButtonHardwareteststop();
-				
-					}
+                    }
+                    else
+                    {
+                        WriteLogFile(1, _T("硬件自检：\r\n键盘\"A\"键按下测试失败！\r\n退出硬件自检程序！"));
+                        OnBnClickedButtonHardwareteststop();
 
-				}
-				else if (int_HWTCnt == 6)
-				{
-					int_HWTCnt++;
+                    }
 
-					// 读取实验fpga采集到的鼠标左键键值信息
-					str_FpgaReadData0 = ExpFpgaRead(0x98);
+                }
+                else if (int_HWTCnt == 5)
+                {
+                    int_HWTCnt++;
 
-					if (str_FpgaReadData0.Mid(7, 1) == _T("1"))
-					{
-						WriteLogFile(1,_T("硬件自检："));
-						WriteLogFile(0,_T("鼠标左键键值测试。。。"));
-					
-						// 发送鼠标中键键值
-						FpgaWrite(0, 0x30, 0x0000010c00000000);
-						FpgaWrite(0, 0x30, 0x0000010000000000);
-						FpgaWrite(0, 0x30, 0x0000010000000000);
+                    // 读取实验fpga采集到的键盘"A"键值信息
+                    str_FpgaReadData0 = ExpFpgaRead(0x98);
+
+                    if (str_FpgaReadData0.Mid(13, 3) == _T("01c"))
+                    {
+                        WriteLogFile(1, _T("硬件自检：\r\n键盘\"A\"键取消测试。。。"));
+
+                        // 发送鼠标左键键值
+                        FpgaWrite(0, 0x31, 0x09);
+                        FpgaWrite(0, 0x31, 0x00);
+                        FpgaWrite(0, 0x31, 0x00);
 
 
-					}
-					else
-					{
-						WriteLogFile(1,_T("硬件自检："));
-						WriteLogFile(0,_T("鼠标左键键值测试失败！"));
-						WriteLogFile(0,_T("退出硬件自检程序！"));
-						OnBnClickedButtonHardwareteststop();
-				
-					}
-				}
-				else if (int_HWTCnt == 7)
-				{
-					int_HWTCnt++;
+                    }
+                    else
+                    {
+                        WriteLogFile(1, _T("硬件自检：\r\n键盘\"A\"键取消测试失败！\r\n退出硬件自检程序！"));
+                        OnBnClickedButtonHardwareteststop();
 
-					// 读取实验fpga采集到的鼠标中键键值信息
-					str_FpgaReadData0 = ExpFpgaRead(0x98);
+                    }
 
-					if (str_FpgaReadData0.Mid(7, 1) == _T("2"))
-					{
-						WriteLogFile(1,_T("硬件自检："));
-						WriteLogFile(0,_T("鼠标中键键值测试。。。"));
-					
-						// 发送鼠标右键键值
-						FpgaWrite(0, 0x30, 0x0000010a00000000);
-						FpgaWrite(0, 0x30, 0x0000010000000000);
-						FpgaWrite(0, 0x30, 0x0000010000000000);
+                }
+                else if (int_HWTCnt == 6)
+                {
+                    int_HWTCnt++;
+
+                    // 读取实验fpga采集到的鼠标左键键值信息
+                    str_FpgaReadData0 = ExpFpgaRead(0x98);
+
+                    if (str_FpgaReadData0.Mid(7, 1) == _T("1"))
+                    {
+                        WriteLogFile(1, _T("硬件自检：\r\n鼠标左键键值测试。。。"));
+
+                        // 发送鼠标中键键值
+                        FpgaWrite(0, 0x31, 0x0c);
+                        FpgaWrite(0, 0x31, 0x00);
+                        FpgaWrite(0, 0x31, 0x00);
 
 
-					}
-					else
-					{
-						WriteLogFile(1,_T("硬件自检："));
-						WriteLogFile(0,_T("鼠标中键键值测试失败！"));
-						WriteLogFile(0,_T("退出硬件自检程序！"));
-						OnBnClickedButtonHardwareteststop();
-				
-					}
-				}
-				else if (int_HWTCnt == 8)
-				{
-					int_HWTCnt++;
+                    }
+                    else
+                    {
+                        WriteLogFile(1, _T("硬件自检：\r\n鼠标左键键值测试失败！\r\n退出硬件自检程序！"));
+                        OnBnClickedButtonHardwareteststop();
 
-					// 读取实验fpga采集到的鼠标右键键值信息
-					str_FpgaReadData0 = ExpFpgaRead(0x98);
+                    }
+                }
+                else if (int_HWTCnt == 7)
+                {
+                    int_HWTCnt++;
 
-					if (str_FpgaReadData0.Mid(7, 1) == _T("4"))
-					{
-						WriteLogFile(1,_T("硬件自检："));
-						WriteLogFile(0,_T("鼠标右键键值测试。。。"));
-						WriteLogFile(0,_T("PS2接口测试成功！"));
+                    // 读取实验fpga采集到的鼠标中键键值信息
+                    str_FpgaReadData0 = ExpFpgaRead(0x98);
 
-						if (Idc_Check_HardwareTestAutoEn.GetCheck()) 
-						{
-							Idc_Combo_HardwareTestSel.SetWindowText(_T("时钟"));
-							int_HWTTimeOutCnt = 0;
-						}
-						else
-						{
-							OnBnClickedButtonHardwareteststop();
+                    if (str_FpgaReadData0.Mid(7, 1) == _T("2"))
+                    {
+                        WriteLogFile(1, _T("硬件自检：\r\n鼠标中键键值测试。。。"));
 
-						}
+                        // 发送鼠标右键键值
+                        FpgaWrite(0, 0x31, 0x0a);
+                        FpgaWrite(0, 0x31, 0x00);
+                        FpgaWrite(0, 0x31, 0x00);
 
 
-					}
-					else
-					{
-						WriteLogFile(1,_T("硬件自检："));
-						WriteLogFile(0,_T("鼠标中键键值测试失败！"));
-						WriteLogFile(0,_T("退出硬件自检程序！"));
-						OnBnClickedButtonHardwareteststop();
-				
-					}
-				}
-			}
+                    }
+                    else
+                    {
+                        WriteLogFile(1, _T("硬件自检：\r\n鼠标中键键值测试失败！\r\n退出硬件自检程序！"));
+                        OnBnClickedButtonHardwareteststop();
+
+                    }
+                }
+                else if (int_HWTCnt == 8)
+                {
+                    int_HWTCnt++;
+
+                    // 读取实验fpga采集到的鼠标右键键值信息
+                    str_FpgaReadData0 = ExpFpgaRead(0x98);
+
+                    if (str_FpgaReadData0.Mid(7, 1) == _T("4"))
+                    {
+                        WriteLogFile(1, _T("硬件自检：\r\n鼠标右键键值测试。。。\r\nPS2接口测试成功！"));
+
+                        if (Idc_Check_HardwareTestAutoEn.GetCheck())
+                        {
+                            Idc_Combo_HardwareTestSel.SetWindowText(_T("时钟"));
+                            int_HWTTimeOutCnt = 0;
+                        }
+                        else
+                        {
+                            OnBnClickedButtonHardwareteststop();
+
+                        }
+
+
+                    }
+                    else
+                    {
+                        WriteLogFile(1, _T("硬件自检：\r\n鼠标中键键值测试失败！\r\n退出硬件自检程序！"));
+                        OnBnClickedButtonHardwareteststop();
+
+                    }
+                }
+            }
 			else
 			{
-				WriteLogFile(1,_T("硬件自检："));
-				WriteLogFile(0,_T("PS2测试超时失败！"));
-				WriteLogFile(0,_T("退出硬件自检程序！"));
-				OnBnClickedButtonHardwareteststop();
+                WriteLogFile(1, _T("硬件自检：\r\nPS2测试超时失败！\r\n退出硬件自检程序！"));
+                OnBnClickedButtonHardwareteststop();
 			
 			}
 		}
-		else if (str_HardwareTestSel == _T("时钟"))
-		{
-			unsigned __int64 uint64_FpgaReadData = _tcstoui64(ExpFpgaRead(0x40),0,16);
-			if (uint64_FpgaReadData == 0x1)
-			{
-				WriteLogFile(1,_T("硬件自检："));
-				WriteLogFile(0,_T("1Hz 时钟测试。。。"));
+        else if (str_HardwareTestSel == _T("时钟"))
+        {
+            unsigned __int64 uint64_FpgaReadData = _tcstoui64(ExpFpgaRead(0x40), 0, 16);
+            if (uint64_FpgaReadData == 0x1)
+            {
+                WriteLogFile(1, _T("硬件自检：\r\n1Hz 时钟测试。。。"));
 
-			}
-			else
-			{
-				WriteLogFile(1,_T("硬件自检："));
-				WriteLogFile(0,_T("1Hz 时钟测试失败！"));
-				WriteLogFile(0,_T("退出硬件自检程序！"));
-				OnBnClickedButtonHardwareteststop();
-				
-			}
-		
-			uint64_FpgaReadData = _tcstoui64(ExpFpgaRead(0x41),0,16);
-			if ((uint64_FpgaReadData > HWT_CLK_1KHZ_OFFSET_N) & (uint64_FpgaReadData < HWT_CLK_1KHZ_OFFSET_P))
-			{
-				WriteLogFile(1,_T("硬件自检："));
-				WriteLogFile(0,_T("1KHz 时钟测试。。。"));
+            }
+            else
+            {
+                WriteLogFile(1, _T("硬件自检：\r\n1Hz 时钟测试失败！\r\n退出硬件自检程序！"));
+                OnBnClickedButtonHardwareteststop();
 
-			}
-			else
-			{
-				WriteLogFile(1,_T("硬件自检："));
-				WriteLogFile(0,_T("1KHz 时钟测试失败！"));
-				WriteLogFile(0,_T("退出硬件自检程序！"));
-				OnBnClickedButtonHardwareteststop();
-				
-			}
+            }
 
-			uint64_FpgaReadData = _tcstoui64(ExpFpgaRead(0x42),0,16);
-			if ((uint64_FpgaReadData > HWT_CLK_750KHZ_OFFSET_N) & (uint64_FpgaReadData < HWT_CLK_750KHZ_OFFSET_P))
-			{
-				WriteLogFile(1,_T("硬件自检："));
-				WriteLogFile(0,_T("750KHz 时钟测试。。。"));
+            uint64_FpgaReadData = _tcstoui64(ExpFpgaRead(0x41), 0, 16);
+            if ((uint64_FpgaReadData > HWT_CLK_1KHZ_OFFSET_N) & (uint64_FpgaReadData < HWT_CLK_1KHZ_OFFSET_P))
+            {
+                WriteLogFile(1, _T("硬件自检：\r\n1KHz 时钟测试。。。"));
 
-			}
-			else
-			{
-				WriteLogFile(1,_T("硬件自检："));
-				WriteLogFile(0,_T("750KHz 时钟测试失败！"));
-				WriteLogFile(0,_T("退出硬件自检程序！"));
-				OnBnClickedButtonHardwareteststop();
-				
-			}
+            }
+            else
+            {
+                WriteLogFile(1, _T("硬件自检：\r\n1KHz 时钟测试失败！\r\n退出硬件自检程序！"));
+                OnBnClickedButtonHardwareteststop();
 
-			uint64_FpgaReadData = _tcstoui64(ExpFpgaRead(0x43),0,16);
-			if ((uint64_FpgaReadData > HWT_CLK_12MHZ_OFFSET_N) & (uint64_FpgaReadData < HWT_CLK_12MHZ_OFFSET_P))
-			{
-				WriteLogFile(1,_T("硬件自检："));
-				WriteLogFile(0,_T("12MHz 时钟测试。。。"));
-				WriteLogFile(0,_T("时钟测试成功！"));
-				WriteLogFile(0,_T("硬件自检完成，所有硬件测试通过！"));
+            }
 
-			}
-			else
-			{
-				WriteLogFile(1,_T("硬件自检："));
-				WriteLogFile(0,_T("12MHz 时钟测试失败！"));
-				WriteLogFile(0,_T("退出硬件自检程序！"));
-				OnBnClickedButtonHardwareteststop();
-				
-			}
+            uint64_FpgaReadData = _tcstoui64(ExpFpgaRead(0x42), 0, 16);
+            if ((uint64_FpgaReadData > HWT_CLK_750KHZ_OFFSET_N) & (uint64_FpgaReadData < HWT_CLK_750KHZ_OFFSET_P))
+            {
+                WriteLogFile(1, _T("硬件自检：\r\n750KHz 时钟测试。。。"));
 
-			OnBnClickedButtonHardwareteststop();
+            }
+            else
+            {
+                WriteLogFile(1, _T("硬件自检：\r\n750KHz 时钟测试失败！\r\n退出硬件自检程序！"));
+                OnBnClickedButtonHardwareteststop();
 
-		}
+            }
+
+            uint64_FpgaReadData = _tcstoui64(ExpFpgaRead(0x43), 0, 16);
+            if ((uint64_FpgaReadData > HWT_CLK_12MHZ_OFFSET_N) & (uint64_FpgaReadData < HWT_CLK_12MHZ_OFFSET_P))
+            {
+                WriteLogFile(1, _T("硬件自检：\r\n12MHz 时钟测试。。。\r\n时钟测试成功！\r\n硬件自检完成，所有硬件测试通过！"));
+
+            }
+            else
+            {
+                WriteLogFile(1, _T("硬件自检：\r\n12MHz 时钟测试失败！\r\n退出硬件自检程序！"));
+                OnBnClickedButtonHardwareteststop();
+
+            }
+
+            OnBnClickedButtonHardwareteststop();
+
+        }
 		//else if (str_HardwareTestSel == _T("VGA接口"))
 		//{
 		//
@@ -3428,14 +3426,6 @@ void CUpperComputerDlg::OnBnClickedButtonHardwareteststart()
 	{
 		bool_TimeridTestDataSampleStatus = 0;
 	}
-	if (KillTimer(TIMERID_EXPCOMRX))
-	{
-		bool_TimeridExpComRxStatus = 1;
-	}
-	else
-	{
-		bool_TimeridExpComRxStatus = 0;
-	}
 	
     // 启动硬件自检定时器
 	SetTimer( TIMERID_HARDWARE_TEST, TIMERID_HARDWARE_TEST_TIME, NULL );
@@ -3470,11 +3460,6 @@ void CUpperComputerDlg::OnBnClickedButtonHardwareteststop()
 	{
 		SetTimer( TIMERID_TEST_DATA_SAMPLE, TIMERID_TEST_DATA_SAMPLE_TIME, NULL );
 	}
-	if (bool_TimeridExpComRxStatus)
-	{
-		SetTimer( TIMERID_EXPCOMRX, TIMERID_EXPCOMRX_TIME, NULL );
-	}
-
 
 }
 
@@ -3482,15 +3467,4 @@ void CUpperComputerDlg::OnBnClickedButtonHardwareteststop()
 void CUpperComputerDlg::OnBnClickedButtonFpgaupdatestop()
 {
 	// TODO: 在此添加控件通知处理程序代码
-}
-
-
-void CUpperComputerDlg::OnEnChangeEditLogdisplay()
-{
-    // TODO:  如果该控件是 RICHEDIT 控件，它将不
-    // 发送此通知，除非重写 CDialogEx::OnInitDialog()
-    // 函数并调用 CRichEditCtrl().SetEventMask()，
-    // 同时将 ENM_CHANGE 标志“或”运算到掩码中。
-
-    // TODO:  在此添加控件通知处理程序代码
 }
