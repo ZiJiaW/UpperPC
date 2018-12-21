@@ -98,7 +98,7 @@ public:
     CString str_ServerMsg_Ps2KeyboardSendData;
 
     long last_check_time = 0;
-
+    bool fpga_is_loading = false;
 
 
    // void SendCmd(CString str_SendStr);

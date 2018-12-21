@@ -162,6 +162,13 @@ void ConnectMetadata::onMessage(websocketpp::connection_hdl hdl, client::message
             case SERVERCMD_LOAD:
             {
                 pDlg->WriteLogFile(1, _T("收到烧录指令。"));
+
+                if (pDlg->fpga_is_loading)
+                {
+                    pDlg->WriteLogFile(1, _T("正在加载，不接收新的文件！"));
+                    break;
+                }
+
                 // 更新上位机状态
                 pDlg->str_WorkStatus = _T("Working");
                 // 关闭相关定时器
@@ -179,9 +186,10 @@ void ConnectMetadata::onMessage(websocketpp::connection_hdl hdl, client::message
                     CFile::Remove(_T("program\\bitfile.bit"));
                 }
                 // 新建加载文件，并打开
-                if (!m_loadFile.Open(_T("program\\bitfile.bit"), CFile::modeCreate | CFile::modeReadWrite))
+                CFileException fileException;
+                if (!m_loadFile.Open(_T("program\\bitfile.bit"), CFile::modeCreate | CFile::modeReadWrite, &fileException))
                 {
-                    pDlg->WriteLogFile(1, _T("文件创建失败。"));
+                    pDlg->WriteLogFile(1, _T("文件创建失败。")+fileException.m_cause);
                 }
                 else
                 {

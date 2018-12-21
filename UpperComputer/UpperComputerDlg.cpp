@@ -441,7 +441,7 @@ UINT _FpgaUpdateThread(LPVOID lparam)
 	CUpperComputerDlg* pDlg=(CUpperComputerDlg*)lparam;//取得主窗口指针
 
 	pDlg->int_FpgaUpdateStatus = 0;
-
+    pDlg->fpga_is_loading = true;
 	// 如果选择spi-flash烧写，则等待擦除完成，10s超时
     if (pDlg->Idc_Radio_FPGAUpdateSpiFlashSelect.GetCheck())
 	{
@@ -498,7 +498,6 @@ UINT _FpgaUpdateThread(LPVOID lparam)
 		pDlg->WriteLogFile(1,_T("FPGA 升级：\r\n加载文件打开失败！"));
 		return 0;
 	}
-
     // 获取文件长度
     uint_FpgaUpdateFileLength = f_FpgaUpdateFile.GetLength();
 
@@ -524,7 +523,6 @@ UINT _FpgaUpdateThread(LPVOID lparam)
 			{
 				//关闭要烧写的文件
 				f_FpgaUpdateFile.Close();
-
 				// 浏览文件按钮可用
 				pDlg->Idc_Button_FPGAUpdateFileSelect.EnableWindow(TRUE);
 				// 启动按钮可用
@@ -634,7 +632,6 @@ UINT _FpgaUpdateThread(LPVOID lparam)
 					pDlg->FpgaWrite(0,0x40,0x1);
 					//关闭要烧写的文件
 					f_FpgaUpdateFile.Close();
-
 					// 浏览文件按钮可用
 					pDlg->Idc_Button_FPGAUpdateFileSelect.EnableWindow(TRUE);
 					// 启动按钮可用
@@ -801,7 +798,6 @@ UINT _FpgaUpdateThread(LPVOID lparam)
 				//关闭文件
 				f_FpgaUpdateFile.Close();
 
-
  				// 实验fpga加载成功
 				if ((uint64_FpgaReadData & 0x0000000000004000) == 0x0000000000004000)
 				{
@@ -856,7 +852,7 @@ UINT _FpgaUpdateThread(LPVOID lparam)
     pDlg->Idc_Button_FPGAUpdateFileSelect.EnableWindow(TRUE);
     // 启动按钮可用
     pDlg->Idc_Button_FpgaUpdateStart.EnableWindow(TRUE);
-	
+    pDlg->fpga_is_loading = false;
 	return 0;
 }
 
