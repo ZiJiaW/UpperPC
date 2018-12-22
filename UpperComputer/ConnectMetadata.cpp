@@ -135,7 +135,7 @@ void ConnectMetadata::onMessage(websocketpp::connection_hdl hdl, client::message
             m_fileRcvEnable = false;// 文件接收使能关闭
         }
     }
-    else if(!m_fileRcvEnable)// 不在传输文件
+    else// 不在传输文件
     {
         if (parseCmd(serverMessage))
         {
@@ -161,13 +161,18 @@ void ConnectMetadata::onMessage(websocketpp::connection_hdl hdl, client::message
             }
             case SERVERCMD_LOAD:
             {
-                pDlg->WriteLogFile(1, _T("收到烧录指令。"));
+                if (m_fileRcvEnable) 
+                { 
+                    pDlg->WriteLogFile(1, _T("正在接收文件，不接收新的文件！"));
+                    break; 
+                }
 
                 if (pDlg->fpga_is_loading)
                 {
                     pDlg->WriteLogFile(1, _T("正在加载，不接收新的文件！"));
                     break;
                 }
+                pDlg->WriteLogFile(1, _T("收到烧录指令。"));
 
                 // 更新上位机状态
                 pDlg->str_WorkStatus = _T("Working");
