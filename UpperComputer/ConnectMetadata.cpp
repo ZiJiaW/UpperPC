@@ -20,7 +20,6 @@ void ConnectMetadata::onOpen(client* c, websocketpp::connection_hdl hdl)
     client::connection_ptr con = c->get_con_from_hdl(hdl);
     m_server = con->get_response_header("Server");
     pDlg->WriteLogFile(1, CString(_T("连接建立成功：")) + CSTR(m_uri));
-    //pDlg->wsEndpoint->send(LPCSTR(CString("hello")));
     // 已连接,连接按钮设为不可用
     pDlg->Idc_Button_ServerConnect.SetWindowText(_T("已连接"));
     pDlg->Idc_Button_ServerConnect.EnableWindow(FALSE);
@@ -88,345 +87,353 @@ void ConnectMetadata::onMessage(websocketpp::connection_hdl hdl, client::message
 {
     auto pDlg = (CUpperComputerDlg*)(AfxGetApp()->m_pMainWnd);
     auto serverMessage = msg->get_payload();
-    bool isBinary = false;
-    if (msg->get_opcode() == websocketpp::frame::opcode::text) {
-        //pDlg->WriteLogFile(1, CString(_T("收到text消息：")) + CSTR(serverMessage));
-    }
-    else {
-        isBinary = true; //二进制消息
-        //pDlg->WriteLogFile(1, CString(_T("收到binary消息：")) + CSTR(websocketpp::utility::to_hex(serverMessage)));
-    }
+    bool isBinary = msg->get_opcode() == websocketpp::frame::opcode::binary;//二进制消息
     if (isBinary && m_fileRcvEnable)// 接收文件，只处理二进制消息
     {
         size_t lenOfSlice = serverMessage.length();
         m_fileRcvLengthSum += lenOfSlice;
-        //pDlg->WriteLogFile(1, _T("接收文件片段长度：") + lenOfSlice);
-        if (!m_over50 && double(m_fileRcvLengthSum) / pDlg->uint_ServerMsg_FileLength > 0.5)
-        {
-            pDlg->WriteLogFile(0, _T("已接收50%......"));
-            m_over50 = true;
+        try {
+            if (!m_over50 && double(m_fileRcvLengthSum) / pDlg->uint_ServerMsg_FileLength > 0.5)
+            {
+                pDlg->WriteLogFile(0, _T("已接收50%......"));
+                m_over50 = true;
+            }
+            m_loadFile.Write(serverMessage.c_str(), lenOfSlice);
+            if (m_fileRcvLengthSum >= pDlg->uint_ServerMsg_FileLength)// 总长度达到期望文件长度，停止接收并处理
+            {
+                // 关闭文件接收超时定时器
+                pDlg->KillTimer(TIMERID_FILEREV);
+                m_loadFile.Close();
+                if (m_fileRcvLengthSum == pDlg->uint_ServerMsg_FileLength)// 长度对应相等
+                {
+                    // 发送接收确认指令:<Receive><Result>…</Result></Receive>
+                    pDlg->wsEndpoint->send("<Receive><Result>Successful</Result></Receive>");
+                    // 日志："文件接收成功："
+                    pDlg->WriteLogFile(0, _T("文件接收成功。"));
+                    // 设置fpga升级模式为在线模式
+                    pDlg->int_FpgaUpdateMode = FPGA_UPDATE_MODE_ONLINE;
+                    // 选择jtag加载模式
+                    pDlg->Idc_Check_FPGAUpdateAutoTestEn.SetCheck(0);
+                    pDlg->Idc_Radio_FPGAUpdateJtagSelect.SetCheck(1);
+                    pDlg->Idc_Radio_FPGAUpdateSpiFlashSelect.SetCheck(0);
+                    // 启动烧写线程
+                    pDlg->FpgaUpdateThreadStart();
+                }
+                else //长度不对，接受失败
+                {
+                    pDlg->wsEndpoint->send("<Receive><Result>Failed</Result></Receive>");
+                    pDlg->WriteLogFile(0, _T("文件接收失败：文件超长。"));
+                }
+                m_fileRcvEnable = false;// 文件接收使能关闭
+            }
         }
-        m_loadFile.Write(serverMessage.c_str(), lenOfSlice);
-        if (m_fileRcvLengthSum >= pDlg->uint_ServerMsg_FileLength)// 总长度达到期望文件长度，停止接收并处理
-        {
-            // 关闭文件接收超时定时器
-            pDlg->KillTimer(TIMERID_FILEREV);
-            m_loadFile.Close();
-            if (m_fileRcvLengthSum == pDlg->uint_ServerMsg_FileLength)// 长度对应相等
-            {
-                // 发送接收确认指令:<Receive><Result>…</Result></Receive>
-                pDlg->wsEndpoint->send("<Receive><Result>Successful</Result></Receive>");
-                // 日志："文件接收成功："
-                pDlg->WriteLogFile(0, _T("文件接收成功。"));
-                // 设置fpga升级模式为在线模式
-                pDlg->int_FpgaUpdateMode = FPGA_UPDATE_MODE_ONLINE;
-                // 选择jtag加载模式
-                pDlg->Idc_Check_FPGAUpdateAutoTestEn.SetCheck(0);
-                pDlg->Idc_Radio_FPGAUpdateJtagSelect.SetCheck(1);
-                pDlg->Idc_Radio_FPGAUpdateSpiFlashSelect.SetCheck(0);
-                // 启动烧写线程
-                pDlg->FpgaUpdateThreadStart();
-            }
-            else //长度不对，接受失败
-            {
-                pDlg->wsEndpoint->send("<Receive><Result>Failed</Result></Receive>");
-                pDlg->WriteLogFile(0, _T("文件接收失败：文件超长。"));
-            }
-            m_fileRcvEnable = false;// 文件接收使能关闭
+        catch (...) {
+            pDlg->WriteLogFile(1, _T("文件接收异常！"));
+            m_fileRcvEnable = false;
+            pDlg->wsEndpoint->send("<Receive><Result>Failed</Result></Receive>");
+            pDlg->OnBnClickedButtonDisconnect();
         }
     }
     else// 不在传输文件
     {
-        if (parseCmd(serverMessage))
-        {
-            //if(pDlg->uint_ServerMsg_Cmd != SERVERCMD_ASKSTATE)
-                pDlg->WriteLogFile(1, CString(_T("收到text消息：")) + CSTR(serverMessage));
-            switch (pDlg->uint_ServerMsg_Cmd)
+        try {
+            if (parseCmd(serverMessage))
             {
-            case SERVERCMD_RECORD:
-            {
-                pDlg->WriteLogFile(1, _T("服务器注册成功!"));
-                pDlg->m_ServerRegisterStatus = 1;
-                break;
-            }
-            case SERVERCMD_ASKSTATE:// 心跳应答
-            {
-                //pDlg->WriteLogFile(1, _T("收到服务器查询上位机状态指令!"));
-                CString toSend = _T("<Client><key>") + pDlg->str_ServerMsg_Key + pDlg->str_UpperComputerID + 
-                    _T("</key><type>ReplyToServerWithState</type><state>") + pDlg->str_WorkStatus + _T("</state></Client>");
-                //pDlg->WriteLogFile(0, _T("发送上位机状态指令："));
-                pDlg->wsEndpoint->send(LPCSTR(toSend), false);
-                pDlg->last_check_time = CTime::GetCurrentTime().GetTime();
-                break;
-            }
-            case SERVERCMD_LOAD:
-            {
-                if (m_fileRcvEnable) 
-                { 
-                    pDlg->WriteLogFile(1, _T("正在接收文件，不接收新的文件！"));
-                    break; 
-                }
-
-                if (pDlg->fpga_is_loading)
+                if (pDlg->uint_ServerMsg_Cmd != SERVERCMD_ASKSTATE)
+                    pDlg->WriteLogFile(1, CString(_T("收到text消息：")) + CSTR(serverMessage));
+                switch (pDlg->uint_ServerMsg_Cmd)
                 {
-                    pDlg->WriteLogFile(1, _T("正在加载，不接收新的文件！"));
+                case SERVERCMD_RECORD:
+                {
+                    pDlg->WriteLogFile(1, _T("服务器注册成功!"));
+                    pDlg->m_ServerRegisterStatus = 1;
                     break;
                 }
-                pDlg->WriteLogFile(1, _T("收到烧录指令。"));
-
-                // 更新上位机状态
-                pDlg->str_WorkStatus = _T("Working");
-                // 关闭相关定时器
-                pDlg->KillTimer(TIMERID_DATA_SAMPLE);
-                // 开始接收加载文件
-                // 新建加载文件路径
-                if (!PathFileExists(_T("program")))
+                case SERVERCMD_ASKSTATE:// 心跳应答
                 {
-                    CreateDirectory(_T("program"), NULL);
+                    //pDlg->WriteLogFile(1, _T("收到服务器查询上位机状态指令!"));
+                    CString toSend = _T("<Client><key>") + pDlg->str_ServerMsg_Key + pDlg->str_UpperComputerID +
+                        _T("</key><type>ReplyToServerWithState</type><state>") + pDlg->str_WorkStatus + _T("</state></Client>");
+                    //pDlg->WriteLogFile(0, _T("发送上位机状态指令："));
+                    pDlg->wsEndpoint->send(LPCSTR(toSend), false);
+                    pDlg->last_check_time = CTime::GetCurrentTime().GetTime();
+                    break;
                 }
-                // 如果已有加载文件，则删除
-                if (PathFileExists(_T("program\\bitfile.bit")))
+                case SERVERCMD_LOAD:
                 {
-                    m_loadFile.Abort();
-                    CFile::Remove(_T("program\\bitfile.bit"));
-                }
-                // 新建加载文件，并打开
-                CFileException fileException;
-                if (!m_loadFile.Open(_T("program\\bitfile.bit"), CFile::modeCreate | CFile::modeReadWrite, &fileException))
-                {
-                    pDlg->WriteLogFile(1, _T("文件创建失败。")+fileException.m_cause);
-                }
-                else
-                {
-                    // 日志：“文件创建成功：”
-                    pDlg->WriteLogFile(1, _T("文件创建成功。"));
-                    // 启动文件接收超时定时器
-                    pDlg->SetTimer(TIMERID_FILEREV, TIMERID_FILEREV_TIME, NULL);
-                    // 接收长度清零
-                    m_fileRcvLengthSum = 0;
-                    // 文件接收使能有效
-                    m_fileRcvEnable = true;
-                    m_over50 = false;
-                    // 响应指令
-                    pDlg->wsEndpoint->send("<File></File>");
-                    pDlg->WriteLogFile(0, _T("开始接收文件......"));
-                }
-                break;
-            }
-            case SERVERCMD_DATA:
-            {
-                // 数据写入主控fpga
-                pDlg->FpgaWrite(0, 0x10, _tcstoui64(pDlg->str_ServerMsg_Data.Mid(26, 4), 0, 16));
-                pDlg->FpgaWrite(0, 0x12, _tcstoui64(pDlg->str_ServerMsg_Data.Mid(30, 16), 0, 16));
-                break;
-            }
-            case SERVERCMD_STARTTEST:
-            {
-                // 更新工作模式为自动测试模式
-                pDlg->str_WorkMode = _T("TestMode");
-                // 发送启动自动测试返回指令
-                pDlg->WriteLogFile(1, _T("收到启动自动测试指令。"));
-                pDlg->WriteLogFile(0, _T("发送启动自动测试返回指令："));
-                pDlg->wsEndpoint->send("<StartTest></StartTest>");
-                
-                break;
-            }
-            case SERVERCMD_ENDTEST:
-            {
-                pDlg->WriteLogFile(1, _T("收到停止自动测试指令。"));
-                // 发送停止自动测试返回指令
-                pDlg->WriteLogFile(0, _T("发送停止自动测试返回指令："));
-                pDlg->wsEndpoint->send("<EndTest></EndTest>");
-                // 更新工作模式为实验模式
-                pDlg->str_WorkMode = _T("ExperimentMode");
-                break;
-            }
-            case SERVERCMD_TEST:
-            {
-                // 数据写入主控fpga
-                pDlg->FpgaWrite(0, 0x10, _tcstoui64(pDlg->str_ServerMsg_Test.Mid(22, 12), 0, 16));
-                // 启动自动测试数据采集定时器
-                pDlg->SetTimer(TIMERID_TEST_DATA_SAMPLE, TIMERID_TEST_DATA_SAMPLE_TIME, NULL);
-                break;
-            }
-            case SERVERCMD_READY:
-            {
-                if (pDlg->str_WorkStatus == _T("Working"))
-                {
-                    // 发送正忙指令
-                    pDlg->WriteLogFile(1, _T("收到待命指令。"));
-                    pDlg->WriteLogFile(0, _T("发送正忙指令："));
-                    pDlg->wsEndpoint->send("<Answer><State>Busy</State></Answer>");
-                }
-                else
-                {
-                    // 发送准备就绪确认指令
-                    pDlg->WriteLogFile(1, _T("收到待命指令："));
-                    pDlg->WriteLogFile(0, _T("发送准备就绪确认指令。"));
-                    pDlg->wsEndpoint->send("<Answer><State>Already</State></Answer>");
-                }
-                break;
-            }
-            case SERVERCMD_BREAK:
-            {
-                // 关闭相关定时器
-                pDlg->KillTimer(TIMERID_DATA_SAMPLE);
-                pDlg->KillTimer(TIMERID_TEST_DATA_SAMPLE);
-                pDlg->KillTimer(TIMERID_FILEREV);
-                // 更新工作模式为实验模式
-                pDlg->str_WorkMode = _T("ExperimentMode");
-                // 更新上位机状态
-                pDlg->str_WorkStatus = _T("Ready");
-                // 初始化数据写入主控fpga
-                pDlg->FpgaWrite(0, 0x10, 0xffffffffffffffff);
-                // 日志
-                pDlg->WriteLogFile(1, _T("收到断开指令："));
-                pDlg->WriteLogFile(0, _T("发送断开确认指令。"));
-                // 发送断开确认指令
-                pDlg->wsEndpoint->send("<Broken></Broken>");
-                break;
-            }
-            //// 启动VGA图像采集
-            //case SERVERCMD_VGASTART :
-            //	{
-            //		//CWinThread  *ThreadHandle = AfxBeginThread(_VgaSendThread,this);
-            //		//CloseHandel(ThreadHandle);
-            //		break;
-            //	
-            //	}
-            //// 结束VGA图像采集
-            //case SERVERCMD_VGASTOP :
-            //	{
-            //		// 停止VGA图像推送
-            //		//system("EXIT");
-            //		break;
-            //	
-            //	}
-            case SERVERCMD_EXPCOMSET:
-            {
-                if (pDlg->str_ServerMsg_ExpComOperation == _T("Open"))
-                {
-                    // 日志：“打开实验串口：”
-                    pDlg->WriteLogFile(1, _T("打开实验串口："));
-                    if (pDlg->ExpComOpen(pDlg->uint_ServerMsg_ExpComBitRate, pDlg->uint_ServerMsg_ExpComDataBits, 
-                        pDlg->uint_ServerMsg_ExpComStopBit, pDlg->uint_ServerMsg_ExpComParityCheck))
+                    if (m_fileRcvEnable)
                     {
-                        // 发送实验串口打开成功指令
-                        pDlg->wsEndpoint->send("<COMStatus>OpenSuccessful</COMStatus>");
-                        pDlg->bool_ExpComStatus = 1;
-                        // 日志：“实验串口打开成功：”
-                        pDlg->WriteLogFile(1, _T("实验串口打开成功!"));
+                        pDlg->WriteLogFile(1, _T("正在接收文件，不接收新的文件！"));
+                        break;
+                    }
+
+                    if (pDlg->fpga_is_loading)
+                    {
+                        pDlg->WriteLogFile(1, _T("正在加载，不接收新的文件！"));
+                        break;
+                    }
+                    pDlg->WriteLogFile(1, _T("收到烧录指令。"));
+
+                    // 更新上位机状态
+                    pDlg->str_WorkStatus = _T("Working");
+                    // 关闭相关定时器
+                    pDlg->KillTimer(TIMERID_DATA_SAMPLE);
+                    // 开始接收加载文件
+                    // 新建加载文件路径
+                    if (!PathFileExists(_T("program")))
+                    {
+                        CreateDirectory(_T("program"), NULL);
+                    }
+                    // 如果已有加载文件，则删除
+                    if (PathFileExists(_T("program\\bitfile.bit")))
+                    {
+                        m_loadFile.Abort();
+                        CFile::Remove(_T("program\\bitfile.bit"));
+                    }
+                    // 新建加载文件，并打开
+                    CFileException fileException;
+                    if (!m_loadFile.Open(_T("program\\bitfile.bit"), CFile::modeCreate | CFile::modeReadWrite, &fileException))
+                    {
+                        pDlg->WriteLogFile(1, _T("文件创建失败。") + fileException.m_cause);
                     }
                     else
                     {
-                        // 发送实验串口打开失败指令
-                        pDlg->wsEndpoint->send("<COMStatus>OpenFailed</COMStatus>");
-                        // 日志：“实验串口打开失败。”
-                        pDlg->WriteLogFile(1, _T("实验串口打开失败。"));
+                        // 日志：“文件创建成功：”
+                        pDlg->WriteLogFile(1, _T("文件创建成功。"));
+                        // 启动文件接收超时定时器
+                        pDlg->SetTimer(TIMERID_FILEREV, TIMERID_FILEREV_TIME, NULL);
+                        // 接收长度清零
+                        m_fileRcvLengthSum = 0;
+                        // 文件接收使能有效
+                        m_fileRcvEnable = true;
+                        m_over50 = false;
+                        // 响应指令
+                        pDlg->wsEndpoint->send("<File></File>");
+                        pDlg->WriteLogFile(0, _T("开始接收文件......"));
                     }
+                    break;
                 }
-                else if (pDlg->str_ServerMsg_ExpComOperation == _T("Close"))
+                case SERVERCMD_DATA:
                 {
-                    // 日志：“关闭实验串口：”
-                    pDlg->WriteLogFile(1, _T("关闭实验串口："));
-                    if (pDlg->ExpComClose())
+                    // 数据写入主控fpga
+                    pDlg->FpgaWrite(0, 0x10, _tcstoui64(pDlg->str_ServerMsg_Data.Mid(26, 4), 0, 16));
+                    pDlg->FpgaWrite(0, 0x12, _tcstoui64(pDlg->str_ServerMsg_Data.Mid(30, 16), 0, 16));
+                    break;
+                }
+                case SERVERCMD_STARTTEST:
+                {
+                    // 更新工作模式为自动测试模式
+                    pDlg->str_WorkMode = _T("TestMode");
+                    // 发送启动自动测试返回指令
+                    pDlg->WriteLogFile(1, _T("收到启动自动测试指令。"));
+                    pDlg->WriteLogFile(0, _T("发送启动自动测试返回指令："));
+                    pDlg->wsEndpoint->send("<StartTest></StartTest>");
+
+                    break;
+                }
+                case SERVERCMD_ENDTEST:
+                {
+                    pDlg->WriteLogFile(1, _T("收到停止自动测试指令。"));
+                    // 发送停止自动测试返回指令
+                    pDlg->WriteLogFile(0, _T("发送停止自动测试返回指令："));
+                    pDlg->wsEndpoint->send("<EndTest></EndTest>");
+                    // 更新工作模式为实验模式
+                    pDlg->str_WorkMode = _T("ExperimentMode");
+                    break;
+                }
+                case SERVERCMD_TEST:
+                {
+                    // 数据写入主控fpga
+                    pDlg->FpgaWrite(0, 0x10, _tcstoui64(pDlg->str_ServerMsg_Test.Mid(22, 12), 0, 16));
+                    // 启动自动测试数据采集定时器
+                    pDlg->SetTimer(TIMERID_TEST_DATA_SAMPLE, TIMERID_TEST_DATA_SAMPLE_TIME, NULL);
+                    break;
+                }
+                case SERVERCMD_READY:
+                {
+                    if (pDlg->str_WorkStatus == _T("Working"))
                     {
-                        // 发送实验串口关闭成功指令
-                        pDlg->wsEndpoint->send("<COMStatus>CloseSuccessful</COMStatus>");
-                        pDlg->bool_ExpComStatus = 0;
-                        // 日志：“实验串口关闭成功。”
-                        pDlg->WriteLogFile(1, _T("实验串口关闭成功。"));
+                        // 发送正忙指令
+                        pDlg->WriteLogFile(1, _T("收到待命指令。"));
+                        pDlg->WriteLogFile(0, _T("发送正忙指令："));
+                        pDlg->wsEndpoint->send("<Answer><State>Busy</State></Answer>");
                     }
                     else
                     {
-                        // 发送实验串口关闭失败指令
-                        pDlg->wsEndpoint->send("<COMStatus>CloseFailed</COMStatus>");
-                        // 日志：“实验串口关闭失败。”
-                        pDlg->WriteLogFile(1, _T("实验串口关闭失败。"));
+                        // 发送准备就绪确认指令
+                        pDlg->WriteLogFile(1, _T("收到待命指令："));
+                        pDlg->WriteLogFile(0, _T("发送准备就绪确认指令。"));
+                        pDlg->wsEndpoint->send("<Answer><State>Already</State></Answer>");
                     }
+                    break;
                 }
-                break;
-            }
-            case SERVERCMD_EXPCOMSENDDATA:
-            {
-                // 数据格式要求以字节为单位，十六进制，小于0x10的，高位填0，如0x0f
-                CString str_DataTmp;
-                BYTE byte_ExpComWriteBuf[EXPCOMBUFSIZE];
-
-
-                if (pDlg->uint_ServerMsg_ExpComSendDataLength > 0)
+                case SERVERCMD_BREAK:
                 {
-                    // 把数据存入串口发送buffer
-                    for (int i = 0; i < pDlg->uint_ServerMsg_ExpComSendDataLength; i++)
-                    {
-                        // 从左到右截取1字节数据
-                        str_DataTmp = pDlg->str_ServerMsg_ExpComSendData.Mid(i * 2, 2);
-                        byte_ExpComWriteBuf[i] = (byte)(_tcstoui64(str_DataTmp, 0, 16) & 0xff);
-                    }
-
-                    // 串口发送数据
-                    pDlg->ExpComWrite(byte_ExpComWriteBuf, pDlg->uint_ServerMsg_ExpComSendDataLength);
-
+                    // 关闭相关定时器
+                    pDlg->KillTimer(TIMERID_DATA_SAMPLE);
+                    pDlg->KillTimer(TIMERID_TEST_DATA_SAMPLE);
+                    pDlg->KillTimer(TIMERID_FILEREV);
+                    // 更新工作模式为实验模式
+                    pDlg->str_WorkMode = _T("ExperimentMode");
+                    // 更新上位机状态
+                    pDlg->str_WorkStatus = _T("Ready");
+                    // 初始化数据写入主控fpga
+                    pDlg->FpgaWrite(0, 0x10, 0xffffffffffffffff);
                     // 日志
-                    pDlg->WriteLogFile(1, _T("实验串口发送数据：") + pDlg->str_ServerMsg_ExpComSendData);
+                    pDlg->WriteLogFile(1, _T("收到断开指令："));
+                    pDlg->WriteLogFile(0, _T("发送断开确认指令。"));
+                    // 发送断开确认指令
+                    pDlg->wsEndpoint->send("<Broken></Broken>");
+                    break;
                 }
-
-                break;
-            }
-            case SERVERCMD_PS2SENDDATA:
-            {
-                // 数据格式要求以字节为单位，十六进制，小于0x10的，高位填0，如0x0f
-                CString str_DataTmp;
-                BYTE byte_Ps2WriteBuf[256];
-
-                if (pDlg->uint_ServerMsg_Ps2MouseSendDataLength > 0)
+                //// 启动VGA图像采集
+                //case SERVERCMD_VGASTART :
+                //	{
+                //		//CWinThread  *ThreadHandle = AfxBeginThread(_VgaSendThread,this);
+                //		//CloseHandel(ThreadHandle);
+                //		break;
+                //	
+                //	}
+                //// 结束VGA图像采集
+                //case SERVERCMD_VGASTOP :
+                //	{
+                //		// 停止VGA图像推送
+                //		//system("EXIT");
+                //		break;
+                //	
+                //	}
+                case SERVERCMD_EXPCOMSET:
                 {
-                    // 把数据存入PS2发送buffer
-                    for (int i = 0; i < pDlg->uint_ServerMsg_Ps2MouseSendDataLength; i++)
+                    if (pDlg->str_ServerMsg_ExpComOperation == _T("Open"))
                     {
-                        // 从左到右截取1字节数据
-                        str_DataTmp = pDlg->str_ServerMsg_Ps2MouseSendData.Mid(i * 2, 2);
-                        byte_Ps2WriteBuf[i] = (byte)(_tcstoui64(str_DataTmp, 0, 16) & 0xff);
+                        // 日志：“打开实验串口：”
+                        pDlg->WriteLogFile(1, _T("打开实验串口："));
+                        if (pDlg->ExpComOpen(pDlg->uint_ServerMsg_ExpComBitRate, pDlg->uint_ServerMsg_ExpComDataBits,
+                            pDlg->uint_ServerMsg_ExpComStopBit, pDlg->uint_ServerMsg_ExpComParityCheck))
+                        {
+                            // 发送实验串口打开成功指令
+                            pDlg->wsEndpoint->send("<COMStatus>OpenSuccessful</COMStatus>");
+                            pDlg->bool_ExpComStatus = 1;
+                            // 日志：“实验串口打开成功：”
+                            pDlg->WriteLogFile(1, _T("实验串口打开成功!"));
+                        }
+                        else
+                        {
+                            // 发送实验串口打开失败指令
+                            pDlg->wsEndpoint->send("<COMStatus>OpenFailed</COMStatus>");
+                            // 日志：“实验串口打开失败。”
+                            pDlg->WriteLogFile(1, _T("实验串口打开失败。"));
+                        }
                     }
-
-                    // 把鼠标数据发送给实验fpga的主机端
-                    pDlg->FpgaBlockWrite(0x31, byte_Ps2WriteBuf, 0x1, pDlg->uint_ServerMsg_Ps2MouseSendDataLength);
-
-                    // 日志
-                    pDlg->WriteLogFile(1, _T("PS2鼠标发送数据：") + pDlg->str_ServerMsg_Ps2MouseSendData);
+                    else if (pDlg->str_ServerMsg_ExpComOperation == _T("Close"))
+                    {
+                        // 日志：“关闭实验串口：”
+                        pDlg->WriteLogFile(1, _T("关闭实验串口："));
+                        if (pDlg->ExpComClose())
+                        {
+                            // 发送实验串口关闭成功指令
+                            pDlg->wsEndpoint->send("<COMStatus>CloseSuccessful</COMStatus>");
+                            pDlg->bool_ExpComStatus = 0;
+                            // 日志：“实验串口关闭成功。”
+                            pDlg->WriteLogFile(1, _T("实验串口关闭成功。"));
+                        }
+                        else
+                        {
+                            // 发送实验串口关闭失败指令
+                            pDlg->wsEndpoint->send("<COMStatus>CloseFailed</COMStatus>");
+                            // 日志：“实验串口关闭失败。”
+                            pDlg->WriteLogFile(1, _T("实验串口关闭失败。"));
+                        }
+                    }
+                    break;
                 }
-
-                if (pDlg->uint_ServerMsg_Ps2KeyboardSendDataLength > 0)
+                case SERVERCMD_EXPCOMSENDDATA:
                 {
-                    // 把数据存入PS2发送buffer
-                    for (int i = 0; i < pDlg->uint_ServerMsg_Ps2KeyboardSendDataLength; i++)
+                    // 数据格式要求以字节为单位，十六进制，小于0x10的，高位填0，如0x0f
+                    CString str_DataTmp;
+                    BYTE byte_ExpComWriteBuf[EXPCOMBUFSIZE];
+
+                    if (pDlg->uint_ServerMsg_ExpComSendDataLength > EXPCOMBUFSIZE)
                     {
-                        // 从左到右截取1字节数据
-                        str_DataTmp = pDlg->str_ServerMsg_Ps2KeyboardSendData.Mid(i * 2, 2);
-                        byte_Ps2WriteBuf[i] = (byte)(_tcstoui64(str_DataTmp, 0, 16) & 0xff);
+                        pDlg->WriteLogFile(1, _T("实验串口发送数据过长！"));
+                    }
+                    else if (pDlg->uint_ServerMsg_ExpComSendDataLength > 0)
+                    {
+                        // 把数据存入串口发送buffer
+                        for (int i = 0; i < pDlg->uint_ServerMsg_ExpComSendDataLength; i++)
+                        {
+                            // 从左到右截取1字节数据
+                            str_DataTmp = pDlg->str_ServerMsg_ExpComSendData.Mid(i * 2, 2);
+                            byte_ExpComWriteBuf[i] = (byte)(_tcstoui64(str_DataTmp, 0, 16) & 0xff);
+                        }
+
+                        // 串口发送数据
+                        pDlg->ExpComWrite(byte_ExpComWriteBuf, pDlg->uint_ServerMsg_ExpComSendDataLength);
+
+                        // 日志
+                        pDlg->WriteLogFile(1, _T("实验串口发送数据：") + pDlg->str_ServerMsg_ExpComSendData);
                     }
 
-                    // 把键盘数据发送给实验fpga的主机端
-                    pDlg->FpgaBlockWrite(0x30, byte_Ps2WriteBuf, 0x1, pDlg->uint_ServerMsg_Ps2KeyboardSendDataLength);
-
-                    // 日志
-                    pDlg->WriteLogFile(1, _T("PS2键盘发送数据：") + pDlg->str_ServerMsg_Ps2KeyboardSendData);
+                    break;
                 }
+                case SERVERCMD_PS2SENDDATA:
+                {
+                    // 数据格式要求以字节为单位，十六进制，小于0x10的，高位填0，如0x0f
+                    CString str_DataTmp;
+                    BYTE byte_Ps2WriteBuf[256];
 
-                break;
+                    if (pDlg->uint_ServerMsg_Ps2MouseSendDataLength > 0)
+                    {
+                        // 把数据存入PS2发送buffer
+                        for (int i = 0; i < pDlg->uint_ServerMsg_Ps2MouseSendDataLength; i++)
+                        {
+                            // 从左到右截取1字节数据
+                            str_DataTmp = pDlg->str_ServerMsg_Ps2MouseSendData.Mid(i * 2, 2);
+                            byte_Ps2WriteBuf[i] = (byte)(_tcstoui64(str_DataTmp, 0, 16) & 0xff);
+                        }
+
+                        // 把鼠标数据发送给实验fpga的主机端
+                        pDlg->FpgaBlockWrite(0x31, byte_Ps2WriteBuf, 0x1, pDlg->uint_ServerMsg_Ps2MouseSendDataLength);
+
+                        // 日志
+                        pDlg->WriteLogFile(1, _T("PS2鼠标发送数据：") + pDlg->str_ServerMsg_Ps2MouseSendData);
+                    }
+
+                    if (pDlg->uint_ServerMsg_Ps2KeyboardSendDataLength > 0)
+                    {
+                        // 把数据存入PS2发送buffer
+                        for (int i = 0; i < pDlg->uint_ServerMsg_Ps2KeyboardSendDataLength; i++)
+                        {
+                            // 从左到右截取1字节数据
+                            str_DataTmp = pDlg->str_ServerMsg_Ps2KeyboardSendData.Mid(i * 2, 2);
+                            byte_Ps2WriteBuf[i] = (byte)(_tcstoui64(str_DataTmp, 0, 16) & 0xff);
+                        }
+
+                        // 把键盘数据发送给实验fpga的主机端
+                        pDlg->FpgaBlockWrite(0x30, byte_Ps2WriteBuf, 0x1, pDlg->uint_ServerMsg_Ps2KeyboardSendDataLength);
+
+                        // 日志
+                        pDlg->WriteLogFile(1, _T("PS2键盘发送数据：") + pDlg->str_ServerMsg_Ps2KeyboardSendData);
+                    }
+
+                    break;
+                }
+                default:
+                {
+                    break;
+                }
+                }
             }
-            default:
+            else
             {
-                break;
-            }
+                pDlg->WriteLogFile(1, CString(_T("接收到无法解析的内容：")) + CSTR(serverMessage));
             }
         }
-        else
-        {
-            pDlg->WriteLogFile(1, CString(_T("接收到无法解析的内容：")) + CSTR(serverMessage));
+        catch (...) {
+            pDlg->WriteLogFile(1, CString(_T("指令解析异常！指令为："))+CSTR(serverMessage));
+            pDlg->OnBnClickedButtonDisconnect();
         }
     }
-    
 }
 
 websocketpp::connection_hdl ConnectMetadata::getHdl() const

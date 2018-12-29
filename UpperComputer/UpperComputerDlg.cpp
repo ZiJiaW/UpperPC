@@ -1904,30 +1904,7 @@ void CUpperComputerDlg::OnBnClickedButtonConnect()// 为WebSocket重写之
     uint_ServerStatusPort = (unsigned int)_ttoi(str_ServerStatusPort);
     // say: ws://127.0.0.1:9002
     CString uri = "ws://" + str_ServerIPAddress + ":" + str_ServerStatusPort;
-    bool success = wsEndpoint->connect(LPCSTR(uri)) == 1;
-    /*
-    while(wsEndpoint->getConStatus() == "Connecting"){}// wait for connecting
-    success &= wsEndpoint->getConStatus() == "Open";// successfully open
-    if (success)
-    {
-        // 已连接,连接按钮设为不可用
-        Idc_Button_ServerConnect.SetWindowText(_T("已连接"));
-        Idc_Button_ServerConnect.EnableWindow(FALSE);
-        // 断开连接可用
-        Idc_Button_ServerDisconnect.SetWindowText(_T("断开"));
-        Idc_Button_ServerDisconnect.EnableWindow(TRUE);
-        // 连接状态置1
-        m_ServerConnectStatus = 1;
-
-        // 连接成功后发送注册请求
-        wsEndpoint->send(std::string("<Register><Id>") + LPCSTR(str_UpperComputerID) + "</Id></Register>");
-    }
-    else// fail to connect
-    {
-        // 状态不变
-        m_ServerConnectStatus = 0;
-        m_ServerRegisterStatus = 0;
-    }*/
+    wsEndpoint->connect(LPCSTR(uri));
 }
 /*
 void CUpperComputerDlg::OnBnClickedButtonDisconnect()
@@ -2011,6 +1988,7 @@ void CUpperComputerDlg::OnTimer(UINT nIDEvent)
             if (time - last_check_time >= 20)
             {
                 wsEndpoint->close(1000, "timeout");
+                WriteLogFile(1, _T("检测到心跳响应超时，断开连接！"));
             }
         }
     }
@@ -2027,7 +2005,6 @@ void CUpperComputerDlg::OnTimer(UINT nIDEvent)
 			OnBnClickedButtonConnect();
             m_ServerRegisterStatus = 0;
             //关闭文件
-            //m_StatusSocket->f_LoadFile.Abort();
             wsEndpoint->closeFile();
 
 		}

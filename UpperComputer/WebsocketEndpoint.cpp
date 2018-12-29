@@ -48,20 +48,32 @@ int WebsocketEndpoint::connect(std::string const &uri)
 void WebsocketEndpoint::close(websocketpp::close::status::value code, std::string reason)
 {
     std::error_code ec;
-    m_endpoint.close(m_conptr->getHdl(), code, reason, ec);
-    closeFile();
+    auto pDlg = (CUpperComputerDlg*)(AfxGetApp()->m_pMainWnd);
+    try {
+        m_endpoint.close(m_conptr->getHdl(), code, reason, ec);
+        closeFile();
+    }
+    catch (...) {
+        pDlg->WriteLogFile(1, _T("连接关闭异常！"));
+        pDlg->OnBnClickedButtonDisconnect();
+    }
     setFileRcvEnable(false);
     if(ec)
     {
-        // TODO
+        pDlg->WriteLogFile(1, _T("连接关闭失败！"));
     }
 }
 void WebsocketEndpoint::send(std::string message, bool toPrint)
 {
     std::error_code ec;
-    m_endpoint.send(m_conptr->getHdl(), message, websocketpp::frame::opcode::text, ec);
-    // TODO: do some record
-    auto pDlg = (CUpperComputerDlg*)(AfxGetApp()->m_pMainWnd);// 对话框指针
+    auto pDlg = (CUpperComputerDlg*)(AfxGetApp()->m_pMainWnd);
+    try {
+        m_endpoint.send(m_conptr->getHdl(), message, websocketpp::frame::opcode::text, ec);
+    }
+    catch (...) {
+        pDlg->WriteLogFile(1, CString(_T("发送异常，发送内容：")) + CSTR(message));
+    }
+    
     if (ec)
     {
         pDlg->WriteLogFile(1, CString(_T("发送消息失败，错误信息：")) + CSTR(ec.message()));
