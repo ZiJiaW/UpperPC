@@ -353,7 +353,7 @@ void ConnectMetadata::onMessage(websocketpp::connection_hdl hdl, client::message
                     CString str_DataTmp;
                     BYTE byte_ExpComWriteBuf[EXPCOMBUFSIZE];
 
-                    if (pDlg->uint_ServerMsg_ExpComSendDataLength > EXPCOMBUFSIZE)
+                    if (pDlg->uint_ServerMsg_ExpComSendDataLength > 1024)
                     {
                         pDlg->WriteLogFile(1, _T("实验串口发送数据过长！"));
                     }
