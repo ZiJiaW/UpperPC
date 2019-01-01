@@ -6,6 +6,8 @@
 - `fix_*`: Developing version aiming to fix * issue.
 - `2.*.*`: History version of the new type of hardware(v2).
 - `1.*.*`: History version of the old type of hardware(v1).
+- `2.0.2`: For old version of FPGA.(UpperComputerX6)
+- `3.0.0`: For new version of FPGA.
 
 ## Todo
 - [x] socket -> Websocket
