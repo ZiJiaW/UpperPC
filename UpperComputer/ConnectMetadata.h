@@ -32,5 +32,6 @@ private:
 
     bool parseCmd(std::string cmd);
     CString getParamFromCmd(CString cmd, CString keyword);
+    bool xmlParse(std::string cmd);
 };
 

@@ -4,6 +4,7 @@
 #include "UpperComputerDlg.h"
 #include "resource.h"
 #include "define.h"
+#include "pugixml.hpp"
 
 using std::string;
 
@@ -587,6 +588,63 @@ bool ConnectMetadata::parseCmd(string cmd)
         return true;
     }
     return false;
+}
+
+bool ConnectMetadata::xmlParse(string cmd)
+{
+    pugi::xml_document doc;
+    pugi::xml_parse_result result = doc.load_string(cmd.c_str());
+    if (!result) return false;// invalid xml data
+    string first_node = doc.first_child().name();
+    if (first_node == "Record")// 注册确认指令：<Record><DataPort>…</DataPort></Record>
+    {
+
+    }
+    else if (first_node == "Load")// 烧录指令：<Load><Length>…</Length><HashCode>…</HashCode></Load>
+    {
+
+    }
+    else if (first_node == "Data")// 数据传输指令:<Data>…</Data>
+    {
+
+    }
+    else if (first_node == "StartTest")// 启动自动测试指令:<StartTest></StartTest>
+    {
+
+    }
+    else if (first_node == "Test")// 自动测试指令:<Test>…</Test>
+    {
+
+    }
+    else if (first_node == "Server")// 心跳：<Server><key>(key value)[string]</key><type>AskClientState</type></Server>
+    {
+
+    }
+    else if (first_node == "Ready")// 准备指令：<Ready></Ready>
+    {
+
+    }
+    else if (first_node == "Break")// 断开连接指令：<Break></Break>
+    {
+
+    }
+    else if (first_node == "COMSet")
+    // 串口设置指令：<COMSet><Operation>…</Operation><BitRate>…</BitRate><DataBits>…</DataBits><ParityCheck>…</ParityCheck><StopBit>…</StopBit></COMSet>
+    {
+
+    }
+    else if (first_node == "COMSend")// 串口数据指令：<COMSend><Length>…</Length><Data>…</Data></COMSend>
+    {
+
+    }
+    else if (first_node == "PS2Send")
+    // PS2鼠标键盘数据传输指令：<PS2Send><MouseLength>…</MouseLength><MouseData>…</MouseData>
+    //                          <KeyboardLength>…</KeyboardLength><KeyboardData>…</KeyboardData></PS2Send>
+    {
+
+    }
+    else return false;
+    return true;
 }
 
 void ConnectMetadata::closeFile()

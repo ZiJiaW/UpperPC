@@ -51,6 +51,12 @@
     <ClInclude Include="ConnectMetadata.h">
       <Filter>头文件</Filter>
     </ClInclude>
+    <ClInclude Include="pugiconfig.hpp">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="pugixml.hpp">
+      <Filter>头文件</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="UpperComputer.cpp">
@@ -69,6 +75,9 @@
       <Filter>源文件</Filter>
     </ClCompile>
     <ClCompile Include="ConnectMetadata.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="pugixml.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
   </ItemGroup>
