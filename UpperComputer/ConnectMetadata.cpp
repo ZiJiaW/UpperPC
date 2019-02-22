@@ -138,7 +138,7 @@ void ConnectMetadata::onMessage(websocketpp::connection_hdl hdl, client::message
     else// 不在传输文件
     {
         try {
-            if (parseCmd(serverMessage))
+            if (xmlParse(serverMessage))
             {
                 if (pDlg->uint_ServerMsg_Cmd != SERVERCMD_ASKSTATE)
                     pDlg->WriteLogFile(1, CString(_T("收到text消息：")) + CSTR(serverMessage));
@@ -174,7 +174,7 @@ void ConnectMetadata::onMessage(websocketpp::connection_hdl hdl, client::message
                         break;
                     }
                     pDlg->WriteLogFile(1, _T("收到烧录指令。"));
-
+                    //pDlg->WriteLogFile(1, std::to_string(pDlg->uint_ServerMsg_FileLength).c_str());
                     // 更新上位机状态
                     pDlg->str_WorkStatus = _T("Working");
                     // 关闭相关定时器
@@ -595,53 +595,72 @@ bool ConnectMetadata::xmlParse(string cmd)
     pugi::xml_document doc;
     pugi::xml_parse_result result = doc.load_string(cmd.c_str());
     if (!result) return false;// invalid xml data
-    string first_node = doc.first_child().name();
+    auto father = doc.first_child();
+    string first_node = father.name();
+    auto pDlg = (CUpperComputerDlg*)(AfxGetApp()->m_pMainWnd);
     if (first_node == "Record")// 注册确认指令：<Record><DataPort>…</DataPort></Record>
     {
-
+        pDlg->uint_ServerMsg_Cmd = SERVERCMD_RECORD;
+        pDlg->str_ServerMsg_DataPort = father.child_value("DataPort");
     }
     else if (first_node == "Load")// 烧录指令：<Load><Length>…</Length><HashCode>…</HashCode></Load>
     {
-
+        pDlg->uint_ServerMsg_Cmd = SERVERCMD_LOAD;
+        pDlg->uint_ServerMsg_FileLength = _ttoi(father.child_value("Length"));
+        pDlg->uint_ServerMsg_FileHashCode = _ttoi(father.child_value("Hashcode"));
     }
     else if (first_node == "Data")// 数据传输指令:<Data>…</Data>
     {
-
+        pDlg->uint_ServerMsg_Cmd = SERVERCMD_DATA;
+        pDlg->str_ServerMsg_Data = father.child_value();
     }
     else if (first_node == "StartTest")// 启动自动测试指令:<StartTest></StartTest>
     {
-
+        pDlg->uint_ServerMsg_Cmd = SERVERCMD_STARTTEST;
     }
     else if (first_node == "Test")// 自动测试指令:<Test>…</Test>
     {
-
+        pDlg->uint_ServerMsg_Cmd = SERVERCMD_ENDTEST;
     }
     else if (first_node == "Server")// 心跳：<Server><key>(key value)[string]</key><type>AskClientState</type></Server>
     {
-
+        pDlg->uint_ServerMsg_Cmd = SERVERCMD_ASKSTATE;
+        pDlg->str_ServerMsg_Key = father.child_value("key");
+        pDlg->str_ServerMsg_Type = father.child_value("type");
     }
     else if (first_node == "Ready")// 准备指令：<Ready></Ready>
     {
-
+        pDlg->uint_ServerMsg_Cmd = SERVERCMD_READY;
     }
     else if (first_node == "Break")// 断开连接指令：<Break></Break>
     {
-
+        pDlg->uint_ServerMsg_Cmd = SERVERCMD_BREAK;
     }
     else if (first_node == "COMSet")
     // 串口设置指令：<COMSet><Operation>…</Operation><BitRate>…</BitRate><DataBits>…</DataBits><ParityCheck>…</ParityCheck><StopBit>…</StopBit></COMSet>
     {
-
+        pDlg->uint_ServerMsg_Cmd = SERVERCMD_EXPCOMSET;
+        pDlg->str_ServerMsg_ExpComOperation = father.child_value("Operation");
+        pDlg->uint_ServerMsg_ExpComBitRate = _ttoi(father.child_value("BitRate"));
+        pDlg->uint_ServerMsg_ExpComDataBits = _ttoi(father.child_value("DataBits"));
+        pDlg->uint_ServerMsg_ExpComParityCheck = _ttoi(father.child_value("ParityCheck"));
+        pDlg->uint_ServerMsg_ExpComStopBit = _ttoi(father.child_value("StopBit"));
     }
     else if (first_node == "COMSend")// 串口数据指令：<COMSend><Length>…</Length><Data>…</Data></COMSend>
     {
-
+        pDlg->uint_ServerMsg_Cmd = SERVERCMD_EXPCOMSENDDATA;
+        pDlg->uint_ServerMsg_ExpComSendDataLength = _ttoi(father.child_value("Length"));
+        pDlg->str_ServerMsg_ExpComSendData = father.child_value("Data");
     }
     else if (first_node == "PS2Send")
     // PS2鼠标键盘数据传输指令：<PS2Send><MouseLength>…</MouseLength><MouseData>…</MouseData>
     //                          <KeyboardLength>…</KeyboardLength><KeyboardData>…</KeyboardData></PS2Send>
     {
-
+        pDlg->uint_ServerMsg_Cmd = SERVERCMD_PS2SENDDATA;
+        pDlg->uint_ServerMsg_Ps2MouseSendDataLength = _ttoi(father.child_value("MouseLength"));
+        pDlg->str_ServerMsg_Ps2MouseSendData = father.child_value("MouseData");
+        pDlg->uint_ServerMsg_Ps2KeyboardSendDataLength = _ttoi(father.child_value("KeyboardLength"));
+        pDlg->str_ServerMsg_Ps2KeyboardSendData = father.child_value("KeyboardData");
     }
     else return false;
     return true;
