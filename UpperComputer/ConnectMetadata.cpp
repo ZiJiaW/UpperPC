@@ -419,6 +419,18 @@ void ConnectMetadata::onMessage(websocketpp::connection_hdl hdl, client::message
 
                     break;
                 }
+                case SERVERCMD_VGASTART:
+                {
+                    pDlg->WriteLogFile(0, _T("开始发送VGA图像数据！"));
+                    pDlg->VgaSendThreadStart();
+                    break;
+                }
+                case SERVERCMD_VGASTOP:
+                {
+                    pDlg->WriteLogFile(0, _T("停止VGA图像数据推送！"));
+                    system("TASKKILL /F /IM ffmpeg.exe");
+                    break;
+                }
                 default:
                 {
                     break;
@@ -661,6 +673,14 @@ bool ConnectMetadata::xmlParse(string cmd)
         pDlg->str_ServerMsg_Ps2MouseSendData = father.child_value("MouseData");
         pDlg->uint_ServerMsg_Ps2KeyboardSendDataLength = _ttoi(father.child_value("KeyboardLength"));
         pDlg->str_ServerMsg_Ps2KeyboardSendData = father.child_value("KeyboardData");
+    }
+    else if (first_node == "VGAStart")
+    {
+        pDlg->uint_ServerMsg_Cmd = SERVERCMD_VGASTART;
+    }
+    else if (first_node == "VGAStop")
+    {
+        pDlg->uint_ServerMsg_Cmd = SERVERCMD_VGASTOP;
     }
     else return false;
     return true;

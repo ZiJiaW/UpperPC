@@ -134,6 +134,8 @@ public:
 	int int_FpgaUpdateMode;
 	void FpgaUpdateThreadStart();
 
+    // VGA
+    void VgaSendThreadStart();
 
     // Ö÷¿Ø´®¿Ú
     CPubSub cpubsub_MasterCom;

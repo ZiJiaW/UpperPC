@@ -132,12 +132,17 @@ UINT _VgaSendThread(LPVOID lparam)
 	CUpperComputerDlg* pDlg=(CUpperComputerDlg*)lparam;//取得主窗口指针
 
 	// 启动VGA图像推送，推送给服务器
-	CString str_System = _T("ffmpeg -f dshow -i video=\"VGA2USB V2U967295\" -pixel_format yuyv422 -an -f flv -y \"rtmp://10.2.26.104:1935/live/") + pDlg->str_UpperComputerID + _T("\"");
+	//CString str_System = _T("ffmpeg -f dshow -i video=\"VGA2USB V2U967295\" -pixel_format yuyv422 -an -f flv -y \"rtmp://10.2.26.104:1935/live/") + pDlg->str_UpperComputerID + _T("\"");
 	//CString str_System = _T("ffmpeg -f dshow -i video=\"VGA2USB V2U967295\" -pixel_format yuyv422 -an -f flv -y \"rtmp://192.168.1.107:1935/live/") + pDlg->str_UpperComputerID + _T("\"");
-	system(str_System);
+    CString str_System = "ffmpeg -f dshow -i video=\"HD Webcam\" -vcodec libx264 -f flv rtmp://127.0.0.1/hls/test";
+    system(str_System);
  
     return 1;
+}
 
+void CUpperComputerDlg::VgaSendThreadStart()
+{
+    AfxBeginThread(_VgaSendThread, this);
 }
 
 BOOL CUpperComputerDlg::OnInitDialog()
@@ -351,19 +356,6 @@ void CUpperComputerDlg::OnClose()
     CDialog::OnClose();
 }
 
-
-// 子线程
-////VGA视频推送线程
-//UINT _VgaSendThread(LPVOID lparam)
-//{  	
-//	// 启动VGA图像推送，推送给服务器
-//	//CString str_System = _T("ffmpeg -f dshow -i video=\"VGA2USB V2U967295\" -pixel_format yuyv422 -an -f flv -y \"rtmp://10.2.26.104:1935/live/") + str_UpperComputerID + _T("\" > ffmpeg.log");
-//	CString str_System = _T("ffmpeg -f dshow -i video=\"VGA2USB V2U967295\" -pixel_format yuyv422 -an -f flv -y \"rtmp://192.168.1.107:1935/live/") + str_UpperComputerID + _T("\"");
-//	system(str_System);
-// 
-//    return 1;
-//
-//}
 
 // 实验fpga 串口测试线程
 UINT _ExpFpgaUartTestThread(LPVOID lparam)
