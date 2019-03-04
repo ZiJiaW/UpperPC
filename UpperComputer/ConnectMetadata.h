@@ -30,8 +30,10 @@ private:
     CFile m_loadFile;
     DWORD m_fileRcvLengthSum;
 
-    bool parseCmd(std::string cmd);
-    CString getParamFromCmd(CString cmd, CString keyword);
+    //bool parseCmd(std::string cmd);
+    //CString getParamFromCmd(CString cmd, CString keyword);
     bool xmlParse(std::string cmd);
+
+    bool vga_is_pushing;
 };
 

@@ -10,7 +10,7 @@ using std::string;
 
 
 ConnectMetadata::ConnectMetadata(websocketpp::connection_hdl hdl, string uri):
-    m_hdl(hdl), m_uri(uri), m_status("Connecting"), m_server("None"), m_errorReason(""), m_fileRcvEnable(false), m_fileRcvLengthSum(0), m_over50(false){}
+    m_hdl(hdl), m_uri(uri), m_status("Connecting"), m_server("None"), m_errorReason(""), m_fileRcvEnable(false), m_fileRcvLengthSum(0), m_over50(false), vga_is_pushing(false){}
 
 ConnectMetadata::~ConnectMetadata(){}
 
@@ -82,6 +82,12 @@ void ConnectMetadata::onClose(client* c, websocketpp::connection_hdl hdl)
     pDlg->Idc_Button_ServerDisconnect.EnableWindow(FALSE);
     // 日志：“服务器连接断开：”
     pDlg->WriteLogFile(1, CString(_T("连接关闭，关闭原因：")) + CSTR(m_errorReason));
+    // 停止VGA图像推送
+    if (vga_is_pushing)
+    {
+        vga_is_pushing = false;
+        system("TASKKILL /F /IM ffmpeg.exe");
+    }
 }
 
 void ConnectMetadata::onMessage(websocketpp::connection_hdl hdl, client::message_ptr msg)
@@ -287,22 +293,6 @@ void ConnectMetadata::onMessage(websocketpp::connection_hdl hdl, client::message
                     pDlg->wsEndpoint->send("<Broken></Broken>");
                     break;
                 }
-                //// 启动VGA图像采集
-                //case SERVERCMD_VGASTART :
-                //	{
-                //		//CWinThread  *ThreadHandle = AfxBeginThread(_VgaSendThread,this);
-                //		//CloseHandel(ThreadHandle);
-                //		break;
-                //	
-                //	}
-                //// 结束VGA图像采集
-                //case SERVERCMD_VGASTOP :
-                //	{
-                //		// 停止VGA图像推送
-                //		//system("EXIT");
-                //		break;
-                //	
-                //	}
                 case SERVERCMD_EXPCOMSET:
                 {
                     if (pDlg->str_ServerMsg_ExpComOperation == _T("Open"))
@@ -422,12 +412,14 @@ void ConnectMetadata::onMessage(websocketpp::connection_hdl hdl, client::message
                 case SERVERCMD_VGASTART:
                 {
                     pDlg->WriteLogFile(0, _T("开始发送VGA图像数据！"));
+                    vga_is_pushing = true;
                     pDlg->VgaSendThreadStart();
                     break;
                 }
                 case SERVERCMD_VGASTOP:
                 {
                     pDlg->WriteLogFile(0, _T("停止VGA图像数据推送！"));
+                    vga_is_pushing = false;
                     system("TASKKILL /F /IM ffmpeg.exe");
                     break;
                 }
@@ -462,144 +454,6 @@ std::string ConnectMetadata::getStatus() const
 void ConnectMetadata::setFileRcvEnable(bool flag)
 {
     m_fileRcvEnable = flag;
-}
-
-CString ConnectMetadata::getParamFromCmd(CString str_ServerCmdStr, CString str_ServerCmdKeyWordStr)
-{
-    int ParamLength;
-    int ParamLocation;
-    CString ServerCmdParam;
-
-    ParamLocation = str_ServerCmdStr.Find(_T("<") + str_ServerCmdKeyWordStr + _T(">")) + str_ServerCmdKeyWordStr.GetLength() + 2;
-    ParamLength = str_ServerCmdStr.Find(_T("</") + str_ServerCmdKeyWordStr + _T(">")) - ParamLocation;
-    ServerCmdParam = str_ServerCmdStr.Mid(ParamLocation, ParamLength);
-    return ServerCmdParam;
-}
-
-bool ConnectMetadata::parseCmd(string cmd)
-{
-    auto pDlg = (CUpperComputerDlg*)(AfxGetApp()->m_pMainWnd);
-    CString str_ServerCmdStr = CSTR(cmd);
-    
-    // 注册确认指令：<Record><DataPort>…</DataPort></Record>
-    if (str_ServerCmdStr.Left(strlen("<Record>")) == "<Record>")
-    {
-        pDlg->uint_ServerMsg_Cmd = SERVERCMD_RECORD;
-        pDlg->str_ServerMsg_DataPort = getParamFromCmd(str_ServerCmdStr, _T("Dataport"));
-        return true;
-    }
-    // 烧录指令：<Load><Length>…</Length><HashCode>…</HashCode></Load>
-    else if (str_ServerCmdStr.Left(strlen("<Load>")) == "<Load>")
-    {
-        pDlg->uint_ServerMsg_Cmd = SERVERCMD_LOAD;
-        pDlg->uint_ServerMsg_FileLength = _ttoi(getParamFromCmd(str_ServerCmdStr, _T("Length")));
-        pDlg->uint_ServerMsg_FileHashCode = _ttoi(getParamFromCmd(str_ServerCmdStr, _T("Hashcode")));
-        return true;
-    }
-    // 数据传输指令:<Data>…</Data>
-    else if (str_ServerCmdStr.Left(strlen("<Data>")) == "<Data>")
-    {
-        pDlg->uint_ServerMsg_Cmd = SERVERCMD_DATA;
-        pDlg->str_ServerMsg_Data = getParamFromCmd(str_ServerCmdStr, _T("Data"));
-        return true;
-    }
-    // 启动自动测试指令:<StartTest></StartTest>
-    else if (str_ServerCmdStr.Left(strlen("<StartTest>")) == "<StartTest>")
-    {
-        pDlg->uint_ServerMsg_Cmd = SERVERCMD_STARTTEST;
-        return true;
-    }
-    // 结束自动测试指令:<EndTest></EndTest>
-    else if (str_ServerCmdStr.Left(strlen("<EndTest>")) == "<EndTest>")
-    {
-        pDlg->uint_ServerMsg_Cmd = SERVERCMD_ENDTEST;
-        return true;
-    }
-    // 自动测试指令:<Test>…</Test>
-    else if (str_ServerCmdStr.Left(strlen("<Test>")) == "<Test>")
-    {
-        pDlg->uint_ServerMsg_Cmd = SERVERCMD_TEST;
-        pDlg->str_ServerMsg_Test = getParamFromCmd(str_ServerCmdStr, _T("Test"));
-        return true;
-    }
-    //// 心跳应答指令：<Response></Response>
-    //else if (str_ServerCmdStr.Left(strlen("<Response>")) == "<Response>")
-    //{
-    //	pDlg->uint_ServerMsg_Cmd = SERVERCMD_RESPONSE;
-    //	
-    //	return true;
-    //}
-    // 服务器查询上位机状态指令：
-    // <Server><key>(key value)[string]</key><type>AskClientState</type></Server>
-    else if (str_ServerCmdStr.Left(strlen("<Server><key>")) == "<Server><key>")
-    {
-        pDlg->str_ServerMsg_Key = getParamFromCmd(str_ServerCmdStr, _T("key"));
-        pDlg->str_ServerMsg_Type = getParamFromCmd(str_ServerCmdStr, _T("type"));
-        /*if (pDlg->str_ServerMsg_Type == "AskClientState")
-        {
-            pDlg->uint_ServerMsg_Cmd = SERVERCMD_ASKSTATE;
-        }*/
-        pDlg->uint_ServerMsg_Cmd = SERVERCMD_ASKSTATE;
-        //pDlg->WriteLogFile(0, _T(pDlg->str_ServerMsg_Type));
-        return true;
-    }
-    // 准备指令：<Ready></Ready>
-    else if (str_ServerCmdStr.Left(strlen("<Ready>")) == "<Ready>")
-    {
-        pDlg->uint_ServerMsg_Cmd = SERVERCMD_READY;
-        return true;
-    }
-    // 断开连接指令：<Break></Break>
-    else if (str_ServerCmdStr.Left(strlen("<Break>")) == "<Break>")
-    {
-        pDlg->uint_ServerMsg_Cmd = SERVERCMD_BREAK;
-        return true;
-    }
-    //// 启动vga图像采集指令：<VgaStart></VgaStart>
-    //else if (str_ServerCmdStr.Left(strlen("<VgaStart>")) == "<VgaStart>")
-    //{
-    //	pDlg->uint_ServerMsg_Cmd = SERVERCMD_VGASTART;
-    //	
-    //	return true;
-    //}
-    //// 停止vga图像采集指令：<VgaStop></VgaStop>
-    //else if (str_ServerCmdStr.Left(strlen("<VgaStop>")) == "<VgaStop>")
-    //{
-    //	pDlg->uint_ServerMsg_Cmd = SERVERCMD_VGASTOP;
-    //	
-    //	return true;
-    //}
-    // 串口设置指令：<COMSet><Operation>…</Operation><BitRate>…</BitRate><DataBits>…</DataBits><ParityCheck>…</ParityCheck><StopBit>…</StopBit></COMSet>
-    else if (str_ServerCmdStr.Left(strlen("<COMSet>")) == "<COMSet>")
-    {
-        pDlg->uint_ServerMsg_Cmd = SERVERCMD_EXPCOMSET;
-        pDlg->str_ServerMsg_ExpComOperation = getParamFromCmd(str_ServerCmdStr, _T("Operation"));
-        pDlg->uint_ServerMsg_ExpComBitRate = _ttoi(getParamFromCmd(str_ServerCmdStr, _T("BitRate")));
-        pDlg->uint_ServerMsg_ExpComDataBits = _ttoi(getParamFromCmd(str_ServerCmdStr, _T("DataBits")));
-        pDlg->uint_ServerMsg_ExpComParityCheck = _ttoi(getParamFromCmd(str_ServerCmdStr, _T("ParityCheck")));
-        pDlg->uint_ServerMsg_ExpComStopBit = _ttoi(getParamFromCmd(str_ServerCmdStr, _T("StopBit")));
-        return true;
-    }
-    // 串口数据指令：<COMSend><Length>…</Length><Data>…</Data></COMSend>
-    else if (str_ServerCmdStr.Left(strlen("<COMSend>")) == "<COMSend>")
-    {
-        pDlg->uint_ServerMsg_Cmd = SERVERCMD_EXPCOMSENDDATA;
-        pDlg->uint_ServerMsg_ExpComSendDataLength = _ttoi(getParamFromCmd(str_ServerCmdStr, _T("Length")));
-        pDlg->str_ServerMsg_ExpComSendData = getParamFromCmd(str_ServerCmdStr, _T("Data"));
-        return true;
-    }
-    // PS2鼠标键盘数据传输指令：<PS2Send><MouseLength>…</MouseLength><MouseData>…</MouseData>
-    //                          <KeyboardLength>…</KeyboardLength><KeyboardData>…</KeyboardData></PS2Send>
-    else if (str_ServerCmdStr.Left(strlen("<PS2Send>")) == "<PS2Send>")
-    {
-        pDlg->uint_ServerMsg_Cmd = SERVERCMD_PS2SENDDATA;
-        pDlg->uint_ServerMsg_Ps2MouseSendDataLength = _ttoi(getParamFromCmd(str_ServerCmdStr, _T("MouseLength")));
-        pDlg->str_ServerMsg_Ps2MouseSendData = getParamFromCmd(str_ServerCmdStr, _T("MouseData"));
-        pDlg->uint_ServerMsg_Ps2KeyboardSendDataLength = _ttoi(getParamFromCmd(str_ServerCmdStr, _T("KeyboardLength")));
-        pDlg->str_ServerMsg_Ps2KeyboardSendData = getParamFromCmd(str_ServerCmdStr, _T("KeyboardData"));
-        return true;
-    }
-    return false;
 }
 
 bool ConnectMetadata::xmlParse(string cmd)
@@ -690,3 +544,138 @@ void ConnectMetadata::closeFile()
 {
     m_loadFile.Abort();
 }
+
+// 老版本的数据解析模块存根
+/*
+CString ConnectMetadata::getParamFromCmd(CString str_ServerCmdStr, CString str_ServerCmdKeyWordStr)
+{
+    int ParamLength;
+    int ParamLocation;
+    CString ServerCmdParam;
+
+    ParamLocation = str_ServerCmdStr.Find(_T("<") + str_ServerCmdKeyWordStr + _T(">")) + str_ServerCmdKeyWordStr.GetLength() + 2;
+    ParamLength = str_ServerCmdStr.Find(_T("</") + str_ServerCmdKeyWordStr + _T(">")) - ParamLocation;
+    ServerCmdParam = str_ServerCmdStr.Mid(ParamLocation, ParamLength);
+    return ServerCmdParam;
+}*/
+
+/*
+bool ConnectMetadata::parseCmd(string cmd)
+{
+    auto pDlg = (CUpperComputerDlg*)(AfxGetApp()->m_pMainWnd);
+    CString str_ServerCmdStr = CSTR(cmd);
+
+    // 注册确认指令：<Record><DataPort>…</DataPort></Record>
+    if (str_ServerCmdStr.Left(strlen("<Record>")) == "<Record>")
+    {
+        pDlg->uint_ServerMsg_Cmd = SERVERCMD_RECORD;
+        pDlg->str_ServerMsg_DataPort = getParamFromCmd(str_ServerCmdStr, _T("Dataport"));
+        return true;
+    }
+    // 烧录指令：<Load><Length>…</Length><HashCode>…</HashCode></Load>
+    else if (str_ServerCmdStr.Left(strlen("<Load>")) == "<Load>")
+    {
+        pDlg->uint_ServerMsg_Cmd = SERVERCMD_LOAD;
+        pDlg->uint_ServerMsg_FileLength = _ttoi(getParamFromCmd(str_ServerCmdStr, _T("Length")));
+        pDlg->uint_ServerMsg_FileHashCode = _ttoi(getParamFromCmd(str_ServerCmdStr, _T("Hashcode")));
+        return true;
+    }
+    // 数据传输指令:<Data>…</Data>
+    else if (str_ServerCmdStr.Left(strlen("<Data>")) == "<Data>")
+    {
+        pDlg->uint_ServerMsg_Cmd = SERVERCMD_DATA;
+        pDlg->str_ServerMsg_Data = getParamFromCmd(str_ServerCmdStr, _T("Data"));
+        return true;
+    }
+    // 启动自动测试指令:<StartTest></StartTest>
+    else if (str_ServerCmdStr.Left(strlen("<StartTest>")) == "<StartTest>")
+    {
+        pDlg->uint_ServerMsg_Cmd = SERVERCMD_STARTTEST;
+        return true;
+    }
+    // 结束自动测试指令:<EndTest></EndTest>
+    else if (str_ServerCmdStr.Left(strlen("<EndTest>")) == "<EndTest>")
+    {
+        pDlg->uint_ServerMsg_Cmd = SERVERCMD_ENDTEST;
+        return true;
+    }
+    // 自动测试指令:<Test>…</Test>
+    else if (str_ServerCmdStr.Left(strlen("<Test>")) == "<Test>")
+    {
+        pDlg->uint_ServerMsg_Cmd = SERVERCMD_TEST;
+        pDlg->str_ServerMsg_Test = getParamFromCmd(str_ServerCmdStr, _T("Test"));
+        return true;
+    }
+    // 服务器查询上位机状态指令：
+    // <Server><key>(key value)[string]</key><type>AskClientState</type></Server>
+    else if (str_ServerCmdStr.Left(strlen("<Server><key>")) == "<Server><key>")
+    {
+        pDlg->str_ServerMsg_Key = getParamFromCmd(str_ServerCmdStr, _T("key"));
+        pDlg->str_ServerMsg_Type = getParamFromCmd(str_ServerCmdStr, _T("type"));
+        //if (pDlg->str_ServerMsg_Type == "AskClientState")
+        //{
+        //    pDlg->uint_ServerMsg_Cmd = SERVERCMD_ASKSTATE;
+        //}
+        pDlg->uint_ServerMsg_Cmd = SERVERCMD_ASKSTATE;
+        //pDlg->WriteLogFile(0, _T(pDlg->str_ServerMsg_Type));
+        return true;
+    }
+    // 准备指令：<Ready></Ready>
+    else if (str_ServerCmdStr.Left(strlen("<Ready>")) == "<Ready>")
+    {
+        pDlg->uint_ServerMsg_Cmd = SERVERCMD_READY;
+        return true;
+    }
+    // 断开连接指令：<Break></Break>
+    else if (str_ServerCmdStr.Left(strlen("<Break>")) == "<Break>")
+    {
+        pDlg->uint_ServerMsg_Cmd = SERVERCMD_BREAK;
+        return true;
+    }
+    //// 启动vga图像采集指令：<VgaStart></VgaStart>
+    //else if (str_ServerCmdStr.Left(strlen("<VgaStart>")) == "<VgaStart>")
+    //{
+    //	pDlg->uint_ServerMsg_Cmd = SERVERCMD_VGASTART;
+    //
+    //	return true;
+    //}
+    //// 停止vga图像采集指令：<VgaStop></VgaStop>
+    //else if (str_ServerCmdStr.Left(strlen("<VgaStop>")) == "<VgaStop>")
+    //{
+    //	pDlg->uint_ServerMsg_Cmd = SERVERCMD_VGASTOP;
+    //
+    //	return true;
+    //}
+    // 串口设置指令：<COMSet><Operation>…</Operation><BitRate>…</BitRate><DataBits>…</DataBits><ParityCheck>…</ParityCheck><StopBit>…</StopBit></COMSet>
+    else if (str_ServerCmdStr.Left(strlen("<COMSet>")) == "<COMSet>")
+    {
+        pDlg->uint_ServerMsg_Cmd = SERVERCMD_EXPCOMSET;
+        pDlg->str_ServerMsg_ExpComOperation = getParamFromCmd(str_ServerCmdStr, _T("Operation"));
+        pDlg->uint_ServerMsg_ExpComBitRate = _ttoi(getParamFromCmd(str_ServerCmdStr, _T("BitRate")));
+        pDlg->uint_ServerMsg_ExpComDataBits = _ttoi(getParamFromCmd(str_ServerCmdStr, _T("DataBits")));
+        pDlg->uint_ServerMsg_ExpComParityCheck = _ttoi(getParamFromCmd(str_ServerCmdStr, _T("ParityCheck")));
+        pDlg->uint_ServerMsg_ExpComStopBit = _ttoi(getParamFromCmd(str_ServerCmdStr, _T("StopBit")));
+        return true;
+    }
+    // 串口数据指令：<COMSend><Length>…</Length><Data>…</Data></COMSend>
+    else if (str_ServerCmdStr.Left(strlen("<COMSend>")) == "<COMSend>")
+    {
+        pDlg->uint_ServerMsg_Cmd = SERVERCMD_EXPCOMSENDDATA;
+        pDlg->uint_ServerMsg_ExpComSendDataLength = _ttoi(getParamFromCmd(str_ServerCmdStr, _T("Length")));
+        pDlg->str_ServerMsg_ExpComSendData = getParamFromCmd(str_ServerCmdStr, _T("Data"));
+        return true;
+    }
+    // PS2鼠标键盘数据传输指令：<PS2Send><MouseLength>…</MouseLength><MouseData>…</MouseData>
+    //                          <KeyboardLength>…</KeyboardLength><KeyboardData>…</KeyboardData></PS2Send>
+    else if (str_ServerCmdStr.Left(strlen("<PS2Send>")) == "<PS2Send>")
+    {
+        pDlg->uint_ServerMsg_Cmd = SERVERCMD_PS2SENDDATA;
+        pDlg->uint_ServerMsg_Ps2MouseSendDataLength = _ttoi(getParamFromCmd(str_ServerCmdStr, _T("MouseLength")));
+        pDlg->str_ServerMsg_Ps2MouseSendData = getParamFromCmd(str_ServerCmdStr, _T("MouseData"));
+        pDlg->uint_ServerMsg_Ps2KeyboardSendDataLength = _ttoi(getParamFromCmd(str_ServerCmdStr, _T("KeyboardLength")));
+        pDlg->str_ServerMsg_Ps2KeyboardSendData = getParamFromCmd(str_ServerCmdStr, _T("KeyboardData"));
+        return true;
+    }
+    return false;
+}
+*/

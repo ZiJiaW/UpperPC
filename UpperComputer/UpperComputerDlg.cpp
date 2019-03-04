@@ -134,7 +134,7 @@ UINT _VgaSendThread(LPVOID lparam)
 	// 启动VGA图像推送，推送给服务器
 	//CString str_System = _T("ffmpeg -f dshow -i video=\"VGA2USB V2U967295\" -pixel_format yuyv422 -an -f flv -y \"rtmp://10.2.26.104:1935/live/") + pDlg->str_UpperComputerID + _T("\"");
 	//CString str_System = _T("ffmpeg -f dshow -i video=\"VGA2USB V2U967295\" -pixel_format yuyv422 -an -f flv -y \"rtmp://192.168.1.107:1935/live/") + pDlg->str_UpperComputerID + _T("\"");
-    CString str_System = "ffmpeg -f dshow -i video=\"HD Webcam\" -vcodec libx264 -f flv rtmp://127.0.0.1/hls/test";
+    CString str_System = "ffmpeg -f dshow -i video=\"VGA2USB V2U967295\" -vcodec libx264 -f flv rtmp://39.107.69.153/live/test";
     system(str_System);
  
     return 1;
